@@ -27,8 +27,4 @@ function textureatlas.new(path, size)
     return instance
 end
 
-function textureatlas:test_draw(index)
-    love.graphics.drawLayer(self.image, index, 0, 0)
-end
-
 return textureatlas
