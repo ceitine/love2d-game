@@ -14,40 +14,16 @@ local mt = {
     __index = chunk,
 }
 
--- defaults
+-- defaults, note: the limit for these is the max value of an 8-bit integer
 local WIDTH = 32
 local HEIGHT = 32
 
--- shaders
+-- shader
 local vtx_format = {
-    {"VertexPosition", "float", 3},
-    {"VertexTexCoord", "float", 2},
+    {"VertexPosition", "float", 2},
 }
 
-local shader = love.graphics.newShader([[
-uniform float scale;
-uniform ArrayImage tex;
-
-#ifdef VERTEX
-vec4 position(mat4 transform_projection, vec4 vertex_position)
-{
-    vec4 position = vec4(vertex_position.xy * scale, 0, 1);
-    VaryingColor.x = vertex_position.z;
-    return transform_projection * position;
-}
-#endif
-
-#ifdef PIXEL
-
-vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 pixel_coords)
-{
-    vec3 uv = vec3(texture_coords.xy, VaryingColor.x);
-    vec4 tex_col = Texel(tex, uv);
-    return tex_col;
-}
-#endif
-]])
-
+local shader = love.graphics.newShader("shaders/chunk.glsl")
 local atlas = textureatlas.new("assets/atlas.png", 32)
 shader:send("tex", atlas.image)
 
@@ -137,11 +113,14 @@ function chunk.new(x, y)
     instance.x = x or 0
     instance.y = y or 0
 
+    instance:set_tile(tile.new(0), 1, 1)
     for x = 1, WIDTH do
         for y = 1, HEIGHT do
-            --if(math.random(0, 1) == 1) then
+            if (x>=WIDTH/2) then
+                instance:set_tile(tile.new(0), x, y)
+            else
                 instance:set_tile(tile.new(mathx.random(0, 1)), x, y)
-            --end
+            end
         end
     end
 
@@ -179,17 +158,30 @@ function chunk:get_tile(x, y)
 end
 
 function chunk:build()
-    -- generate vertices
     local vertices = {}
     local function add_quad(x, y, width, height, start_tile)
         local offset = #vertices + 1
 
-        vertices[offset] = {x, y, start_tile.texture_index, 0, 0}
-        vertices[offset + 1] = {x + width, y, start_tile.texture_index, width, 0}
-        vertices[offset + 2] = {x, y + height, start_tile.texture_index, 0, height}
-        vertices[offset + 3] = {x + width, y, start_tile.texture_index, width, 0}
-        vertices[offset + 4] = {x, y + height, start_tile.texture_index, 0, height}
-        vertices[offset + 5] = {x + width, y + height, start_tile.texture_index, width, height}
+        -- pack data and append vertices
+        local x = bit.band(x, 0xFF)
+        local y = bit.lshift(bit.band(y, 0xFF), 8)
+        local w = bit.lshift(bit.band(width, 0xFF), 16)
+        local h = bit.lshift(bit.band(height, 0xFF), 24)
+        local data = bit.bor(h, w, y, x)
+
+        local texture_index = bit.lshift(bit.band(start_tile.texture_index, 0xFFF), 20)
+
+        local top_left = bit.bor(texture_index, bit.lshift(bit.band(0, 0x7), 17))
+        local top_right = bit.bor(texture_index, bit.lshift(bit.band(1, 0x7), 17))
+        local bottom_left = bit.bor(texture_index, bit.lshift(bit.band(2, 0x7), 17))
+        local bottom_right = bit.bor(texture_index, bit.lshift(bit.band(3, 0x7), 17))
+
+        vertices[offset] = {data, top_left}
+        vertices[offset + 1] = {data, top_right}
+        vertices[offset + 2] = {data, bottom_left}
+        vertices[offset + 3] = {data, top_right}
+        vertices[offset + 4] = {data, bottom_left}
+        vertices[offset + 5] = {data, bottom_right}
     end
 
     local tested = {}
@@ -218,11 +210,13 @@ function chunk:build()
                     y = true
                 }
 
+                -- check how far we can expand our tile
                 while(can_spread.x or can_spread.y) do
                     can_spread.x = try_spread_x(self, can_spread, tested, start, size, tile)
                     can_spread.y = try_spread_y(self, can_spread, tested, start, size, tile)
                 end
 
+                -- create new quad
                 add_quad(start.x, start.y, size.x, size.y, tile)
             end
         end
