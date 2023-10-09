@@ -140,7 +140,7 @@ function chunk.new(x, y)
     for x = 1, WIDTH do
         for y = 1, HEIGHT do
             --if(math.random(0, 1) == 1) then
-                instance:set_tile(tile.new(math.random(0, 1)), x, y)
+                instance:set_tile(tile.new(mathx.random(0, 1)), x, y)
             --end
         end
     end
