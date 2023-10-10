@@ -10,8 +10,15 @@ textureatlas.size = nil
 textureatlas.count = 0
 
 -- create new texture atlas
+function textureatlas:create(o)
+    local instance = o or {}
+    setmetatable(instance, mt)
+    self.__index = instance
+    return instance
+end
+
 function textureatlas.new(path, size)
-    local instance = setmetatable({}, mt)
+    local instance = textureatlas:create()
     instance.size = size or 32
 
     local data = love.image.newImageData(path)

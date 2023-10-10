@@ -1,5 +1,6 @@
 tile = require("render/tile")
 textureatlas = require("render/textureatlas")
+vertexbuffer = require("render/vertexbuffer")
 
 local all = {}
 local chunk = {}
@@ -108,19 +109,21 @@ local function set_chunk_at(x, y, chunk)
     chunk.all[y][x] = chunk
 end
 
+function chunk:create(o)
+    local instance = o or {}
+    setmetatable(instance, mt)
+    self.__index = instance
+    return instance
+end
+
 function chunk.new(x, y)
-    local instance = setmetatable({}, mt)
+    local instance = chunk:create()
     instance.x = x or 0
     instance.y = y or 0
 
-    instance:set_tile(tile.new(0), 1, 1)
     for x = 1, WIDTH do
         for y = 1, HEIGHT do
-            if (x>=WIDTH/2) then
-                instance:set_tile(tile.new(0), x, y)
-            else
-                instance:set_tile(tile.new(mathx.random(0, 1)), x, y)
-            end
+            instance:set_tile(tile.new(mathx.random(0, atlas.count - 1)), x, y)
         end
     end
 
@@ -158,30 +161,34 @@ function chunk:get_tile(x, y)
 end
 
 function chunk:build()
-    local vertices = {}
-    local function add_quad(x, y, width, height, start_tile)
-        local offset = #vertices + 1
+    local buffer = vertexbuffer.new()
 
+    self.greedy = {}
+    local function add_quad(x, y, width, height, start_tile)
         -- pack data and append vertices
-        local x = bit.band(x, 0xFF)
-        local y = bit.lshift(bit.band(y, 0xFF), 8)
-        local w = bit.lshift(bit.band(width, 0xFF), 16)
-        local h = bit.lshift(bit.band(height, 0xFF), 24)
-        local data = bit.bor(h, w, y, x)
+        local data = bit.bor(
+            bit.lshift(bit.band(x, 0xFF), 0), 
+            bit.lshift(bit.band(y, 0xFF), 8), 
+            bit.lshift(bit.band(width, 0xFF), 16), 
+            bit.lshift(bit.band(height, 0xFF), 24)
+        )
 
         local texture_index = bit.lshift(bit.band(start_tile.texture_index, 0xFFF), 20)
 
-        local top_left = bit.bor(texture_index, bit.lshift(bit.band(0, 0x7), 17))
-        local top_right = bit.bor(texture_index, bit.lshift(bit.band(1, 0x7), 17))
-        local bottom_left = bit.bor(texture_index, bit.lshift(bit.band(2, 0x7), 17))
-        local bottom_right = bit.bor(texture_index, bit.lshift(bit.band(3, 0x7), 17))
+        -- add to our vertexbuffer
+        buffer:add_quad(
+            {data, bit.bor(texture_index, bit.lshift(bit.band(0, 0x7), 17))}, -- top left
+            {data, bit.bor(texture_index, bit.lshift(bit.band(1, 0x7), 17))}, -- top right
+            {data, bit.bor(texture_index, bit.lshift(bit.band(2, 0x7), 17))}, -- bottom left
+            {data, bit.bor(texture_index, bit.lshift(bit.band(3, 0x7), 17))} -- bottom right
+        )
 
-        vertices[offset] = {data, top_left}
-        vertices[offset + 1] = {data, top_right}
-        vertices[offset + 2] = {data, bottom_left}
-        vertices[offset + 3] = {data, top_right}
-        vertices[offset + 4] = {data, bottom_left}
-        vertices[offset + 5] = {data, bottom_right}
+        self.greedy[#self.greedy + 1] = {
+            x = x,
+            y = y,
+            width = width,
+            height = height
+        }
     end
 
     local tested = {}
@@ -222,9 +229,14 @@ function chunk:build()
         end
     end
 
-    self.mesh = love.graphics.newMesh(vtx_format, vertices, "triangles")
-    self.vertex_count = #vertices
+    self.mesh = love.graphics.newMesh(vtx_format, buffer.vertices, "triangles")
+    self.mesh:setVertexMap(buffer.indices)
+
+    self.vertex_count = #buffer.vertices
 end
+
+local debug_view = false
+local pressed = false 
 
 function chunk:render(x, y, scale)
     if(self.mesh == nil) then 
@@ -241,6 +253,24 @@ function chunk:render(x, y, scale)
     -- draw our chunk
     render.set_shader(shader)
     love.graphics.draw(self.mesh, ox, oy)
+
+    -- greedy debug view
+    if(love.keyboard.isDown("tab")) then
+        if(not pressed) then
+            debug_view = not debug_view
+        end
+        pressed = true
+    else
+        pressed = false
+    end
+
+    if(not debug_view) then return end
+
+    render.set_shader()
+    for _, rect in pairs(self.greedy) do
+        local color = color.random(nil, rect.x * 3253253 + rect.y * 22323)
+        render.rectangle(ox + rect.x * scale, oy + rect.y * scale, rect.width * scale, rect.height * scale, color)
+    end
 end
 
 return chunk

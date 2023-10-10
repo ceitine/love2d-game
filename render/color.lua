@@ -25,9 +25,30 @@ function color.new(r, g, b, a)
     return instance
 end
 
+-- helpers
+function color:with_red(red)
+    self.r = red or 255
+    return self
+end
+
+function color:with_green(green)
+    self.g = green or 255
+    return self
+end
+
+function color:with_blue(blue)
+    self.b = blue or 255
+    return self
+end
+
+function color:with_alpha(alpha)
+    self.a = alpha or 255
+    return self
+end
+
 -- math utility
-function color.random(alpha)
-    return color.new(math.random(0, 255), math.random(0, 255), math.random(0, 255), alpha and math.random(0, 255) or 255)
+function color.random(alpha, seed)
+    return color.new(mathx.random(0, 255, seed), mathx.random(0, 255, seed + 1), mathx.random(0, 255, seed + 2), alpha and mathx.random(0, 255, seed + 3) or 255)
 end
 
 function color.from32(integer)
@@ -57,7 +78,7 @@ function color:lerp(b, t)
 end
 
 -- some constants
-color.WHITE = color.new()
+color.WHITE = color.new(255, 255, 255, 255)
 color.BLACK = color.new(0, 0, 0, 255)
 color.TRANSPARENT = color.new(0, 0, 0, 0)
 

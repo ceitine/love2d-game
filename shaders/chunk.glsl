@@ -34,7 +34,7 @@ vec4 position(mat4 transform_projection, vec4 vertex_position)
     int vertex_index = (second_data >> 17) & 0x7;
     vec4 rect = vec4(first_data & 0xFF, (first_data >> 8) & 0xFF, (first_data >> 16) & 0xFF, (first_data >> 24) & 0xFF);
     vec2 offset = offsets[vertex_index];
-    vertex_position = vec4((rect.xy + offset.xy * rect.zw) * scale, 0, 1);
+    vertex_position = vec4((rect.xy + (offset.xy * rect.zw)) * scale, 0, 1);
     VaryingTexCoord.xyz = vec3(offset.xy * rect.zw, texture_index);
 
     return transform_projection * vertex_position;
