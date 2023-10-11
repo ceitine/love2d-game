@@ -1,4 +1,4 @@
-#pragma language glsl3
+#pragma language glsl3 // i hate glsl
 
 uniform float scale;
 uniform ArrayImage tex;
@@ -12,32 +12,42 @@ const vec2 offsets[4] = vec2[4]
     vec2(1, 1)
 );
 
-/*
-some sizes for our vertex:
-x - 8 bits
-y - 8 bits
-width - 8 bits
-height - 8 bits
+struct Tile {
+    vec4 vertex_position;
+    vec3 tex_coords;
+};
 
-other:
-texture index: 12 bits
-vertex index: 3 bits
-*/
+Tile unpack(vec4 data)
+{
+    // unpack data
+    Tile tile;
+    uint first_data = uint(data.x);
+    uint second_data = uint(data.y);
+
+    uint texture_index = (second_data >> 20) & 0xFFFu;
+    uint vertex_index = (second_data >> 17) & 0x7u;
+    
+    vec4 rect = vec4(
+        (first_data >> 4) & 0x7Fu, // x
+        (first_data >> 11) & 0x7Fu, // y 
+        (first_data >> 18) & 0x7Fu, // width
+        (first_data >> 25) & 0x7Fu // height
+    );
+    vec2 offset = offsets[vertex_index] * rect.zw;
+
+    // assign values
+    tile.vertex_position = vec4((rect.xy + offset.xy) * scale, 1, 1);
+    tile.tex_coords = vec3(offset.xy, texture_index);
+
+    return tile;
+}
 
 vec4 position(mat4 transform_projection, vec4 vertex_position)
 {
-    // let's unpack some data and handle our vertices
-    int first_data = int(vertex_position.x);
-    int second_data = int(vertex_position.y);
-
-    int texture_index = (second_data >> 20) & 0xFFF;
-    int vertex_index = (second_data >> 17) & 0x7;
-    vec4 rect = vec4(first_data & 0xFF, (first_data >> 8) & 0xFF, (first_data >> 16) & 0xFF, (first_data >> 24) & 0xFF);
-    vec2 offset = offsets[vertex_index];
-    vertex_position = vec4((rect.xy + (offset.xy * rect.zw)) * scale, 0, 1);
-    VaryingTexCoord.xyz = vec3(offset.xy * rect.zw, texture_index);
-
-    return transform_projection * vertex_position;
+    // let's use the values from our unpacked data
+    Tile unpacked = unpack(vertex_position);
+    VaryingTexCoord.xyz = unpacked.tex_coords;
+    return transform_projection * unpacked.vertex_position;
 }
 #endif
 

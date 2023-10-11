@@ -11,4 +11,8 @@ function mathx.random(min, max, seed)
     return love.math.random(min, max)
 end
 
+function mathx.clamp(value, min, max)
+    return math.max(math.min(value, max), min)
+end
+
 return mathx

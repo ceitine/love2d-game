@@ -28,6 +28,12 @@ function vertexbuffer:add_vertex(v)
     return index
 end
 
+function vertexbuffer:add_triangle(i1, i2, i3)
+    self:add_index(i1)
+    self:add_index(i2)
+    self:add_index(i3)
+end
+
 function vertexbuffer:add_quad(v1, v2, v3, v4)
     -- add vertices
     local i1 = self:add_vertex(v1)
@@ -36,12 +42,8 @@ function vertexbuffer:add_quad(v1, v2, v3, v4)
     local i4 = self:add_vertex(v4)
 
     -- add indices in the form of triangles
-    self:add_index(i1)
-    self:add_index(i2)
-    self:add_index(i3)
-    self:add_index(i3)
-    self:add_index(i2)
-    self:add_index(i4)
+    self:add_triangle(i1, i2, i3)
+    self:add_triangle(i3, i2, i4)
 end
 
 return vertexbuffer

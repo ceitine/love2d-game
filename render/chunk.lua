@@ -101,12 +101,12 @@ end
 -- functions
 local function set_chunk_at(x, y, chunk)
     -- append new row
-    if(chunk.all[y] == nil) then
-        chunk.all[y] = {}
+    if(chunk.all[x] == nil) then
+        chunk.all[x] = {}
     end
 
     -- append chunk
-    chunk.all[y][x] = chunk
+    chunk.all[x][y] = chunk
 end
 
 function chunk:create(o)
@@ -160,17 +160,39 @@ function chunk:get_tile(x, y)
     return self.tiles[y][x]
 end
 
-function chunk:build()
-    local buffer = vertexbuffer.new()
+function chunk:get_neighbor(x, y)
+    local data = {}
+    local pos = {
+        self.x + math.ceil((x + 1) / WIDTH - 1),
+        self.y + math.ceil((y + 1) / HEIGHT - 1)
+    }
+    
+    if(chunk.all[x] ~= nil and chunk.all[x][y] ~= nil) then
+        data.chunk = chunk.all[x][y]
+        data.tile = data.chunk:get_tile(
+            (x % WIDTH + WIDTH) % WIDTH, 
+            (y % HEIGHT + HEIGHT) % HEIGHT
+        )
+    end
 
-    self.greedy = {}
+    return data
+end
+
+function chunk:build(test)
+    -- discard old mesh
+    if(self.mesh ~= nil) then
+        self.mesh:release()
+        self.mesh = nil
+    end
+
+    local buffer = vertexbuffer.new()
     local function add_quad(x, y, width, height, start_tile)
         -- pack data and append vertices
         local data = bit.bor(
-            bit.lshift(bit.band(x, 0xFF), 0), 
-            bit.lshift(bit.band(y, 0xFF), 8), 
-            bit.lshift(bit.band(width, 0xFF), 16), 
-            bit.lshift(bit.band(height, 0xFF), 24)
+            bit.lshift(bit.band(x, 0x7F), 4),
+            bit.lshift(bit.band(y, 0x7F), 11),
+            bit.lshift(bit.band(width, 0x7F), 18),
+            bit.lshift(bit.band(height, 0x7F), 25)
         )
 
         local texture_index = bit.lshift(bit.band(start_tile.texture_index, 0xFFF), 20)
@@ -182,15 +204,9 @@ function chunk:build()
             {data, bit.bor(texture_index, bit.lshift(bit.band(2, 0x7), 17))}, -- bottom left
             {data, bit.bor(texture_index, bit.lshift(bit.band(3, 0x7), 17))} -- bottom right
         )
-
-        self.greedy[#self.greedy + 1] = {
-            x = x,
-            y = y,
-            width = width,
-            height = height
-        }
     end
 
+    -- go through whole tile map
     local tested = {}
     for x = 1, WIDTH do
         if(tested[x] == nil) then
@@ -229,14 +245,11 @@ function chunk:build()
         end
     end
 
+    -- create mesh
     self.mesh = love.graphics.newMesh(vtx_format, buffer.vertices, "triangles")
     self.mesh:setVertexMap(buffer.indices)
-
     self.vertex_count = #buffer.vertices
 end
-
-local debug_view = false
-local pressed = false 
 
 function chunk:render(x, y, scale)
     if(self.mesh == nil) then 
@@ -253,24 +266,6 @@ function chunk:render(x, y, scale)
     -- draw our chunk
     render.set_shader(shader)
     love.graphics.draw(self.mesh, ox, oy)
-
-    -- greedy debug view
-    if(love.keyboard.isDown("tab")) then
-        if(not pressed) then
-            debug_view = not debug_view
-        end
-        pressed = true
-    else
-        pressed = false
-    end
-
-    if(not debug_view) then return end
-
-    render.set_shader()
-    for _, rect in pairs(self.greedy) do
-        local color = color.random(nil, rect.x * 3253253 + rect.y * 22323)
-        render.rectangle(ox + rect.x * scale, oy + rect.y * scale, rect.width * scale, rect.height * scale, color)
-    end
 end
 
 return chunk
