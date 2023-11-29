@@ -20,10 +20,10 @@ local mt = {
 local WIDTH = 32
 local HEIGHT = 32
 local AMBIENT_LIGHT = {
-    r = 48, 
-    g = 48, 
-    b = 48, -- (r, g, b) * 4
-    level = 6, -- light level 0-7
+    r = 63, 
+    g = 63, -- color 0-63
+    b = 63, -- (r, g, b) * 4
+    level = 7, -- light level 0-7
 }
 
 -- shader
@@ -242,10 +242,10 @@ function chunk:generate_lightmap()
         - points affected by a light, will have a tint value, otherwise it will just use the default environment color
     - go through all light objects in the chunk, use the light's range to update the lightmap point tint
     - light tint data is 6 bits for each color channel, light level will work with just 2, in total 20 bits, just enough to fill the second data
-        - Red (6 bits) 64
-        - Green (6 bits) 64
-        - Blue (6 bits) 64
-        - Level (3 bits) 7
+        - Red (6 bits) 0-63
+        - Green (6 bits) 0-63
+        - Blue (6 bits) 0-63
+        - Level (3 bits) 0-7
         (It will lose some precision, 256/64, 4x) 
 
     - in add quad the respective point will be used for each vertex's light data, we will need a fetch_light(x, y) function.

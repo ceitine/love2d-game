@@ -65,6 +65,7 @@ local camera = {
     drag = nil,
 }
 
+-- could eventually check if chunk is within screen bounds and ignore if it isn't :D
 hook.register("", "draw", function()
     render.setcol(color.WHITE)
     for _, chunk in pairs(chunks) do

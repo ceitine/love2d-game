@@ -40,7 +40,7 @@ Tile unpack(vec4 data)
         (second_data >> 16) & 0x3Fu,
         (second_data >> 10) & 0x3Fu,
         (second_data >> 4) & 0x3Fu
-    ) * 6 / 256;
+    ) * 4 / 256;
     light.level = (second_data >> 1) & 0x7u;
     tile.light_data = light;
 
