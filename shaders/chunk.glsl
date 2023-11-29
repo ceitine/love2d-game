@@ -12,9 +12,15 @@ const vec2 offsets[4] = vec2[4]
     vec2(1, 1)
 );
 
+struct LightData {
+    vec3 color;
+    float level;
+};
+
 struct Tile {
     vec4 vertex_position;
     vec3 tex_coords;
+    LightData light_data;
 };
 
 Tile unpack(vec4 data)
@@ -24,9 +30,21 @@ Tile unpack(vec4 data)
     uint first_data = uint(data.x);
     uint second_data = uint(data.y);
 
-    uint texture_index = (second_data >> 20) & 0xFFFu;
-    uint vertex_index = (second_data >> 17) & 0x7u;
+    // texture and vertex
+    uint texture_index = (second_data >> 24) & 0xFFu;
+    uint vertex_index = (second_data >> 22) & 0x3u;
     
+    // light
+    LightData light;
+    light.color = vec3(
+        (second_data >> 16) & 0x3Fu,
+        (second_data >> 10) & 0x3Fu,
+        (second_data >> 4) & 0x3Fu
+    ) * 6 / 256;
+    light.level = (second_data >> 1) & 0x7u;
+    tile.light_data = light;
+
+    // rectangle
     vec4 rect = vec4(
         (first_data >> 4) & 0x7Fu, // x
         (first_data >> 11) & 0x7Fu, // y 
@@ -44,9 +62,15 @@ Tile unpack(vec4 data)
 
 vec4 position(mat4 transform_projection, vec4 vertex_position)
 {
-    // let's use the values from our unpacked data
+    // let's unpack and assign texcoords
     Tile unpacked = unpack(vertex_position);
     VaryingTexCoord.xyz = unpacked.tex_coords;
+    
+    // light color
+    LightData light = unpacked.light_data;
+    VaryingColor = vec4(light.color, light.level);
+
+    // position
     return transform_projection * unpacked.vertex_position;
 }
 #endif
@@ -54,7 +78,13 @@ vec4 position(mat4 transform_projection, vec4 vertex_position)
 #ifdef PIXEL
 vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 pixel_coords)
 {
+    // get light information from color
+    vec3 col = color.rgb;
+    float level = color.a / 7;
+
+    // get texture
     vec4 tex_col = texture2DArray(tex, VaryingTexCoord.xyz);
-    return tex_col;
+    vec3 mult = col * level;
+    return vec4(tex_col.rgb * mult, 1);
 }
 #endif

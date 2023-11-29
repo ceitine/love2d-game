@@ -5,6 +5,7 @@ vertexbuffer = require("render/vertexbuffer")
 local all = {}
 local chunk = {}
 chunk.all = all
+chunk.lightmap = {}
 chunk.tiles = {}
 chunk.x = 0
 chunk.y = 0
@@ -18,6 +19,12 @@ local mt = {
 -- defaults, note: the limit for these is the max value of an 8-bit integer
 local WIDTH = 32
 local HEIGHT = 32
+local AMBIENT_LIGHT = {
+    r = 48, 
+    g = 48, 
+    b = 48, -- (r, g, b) * 4
+    level = 6, -- light level 0-7
+}
 
 -- shader
 local vtx_format = {
@@ -174,11 +181,79 @@ function chunk:get_neighbor(x, y)
             (y % HEIGHT + HEIGHT) % HEIGHT
         )
     end
-
+    
     return data
 end
 
-function chunk:build(test)
+function chunk:fetch_light(x, y) -- for fetching points
+    return (self.lightmap[y] or {})[x] or AMBIENT_LIGHT
+end
+
+function chunk:fetch_lights(x, y) -- for fetching tiles
+    local tl = self:fetch_light(x, y)
+    local tr = self:fetch_light(x + 1, y)
+    local bl = self:fetch_light(x, y + 1)
+    local br = self:fetch_light(x + 1, y + 1)
+
+    return {
+        bit.bor( -- top left
+            bit.lshift(bit.band(tl.r, 0x3F), 16),
+            bit.lshift(bit.band(tl.g, 0x3F), 10),
+            bit.lshift(bit.band(tl.b, 0x3F), 4),
+            bit.lshift(bit.band(tl.level, 0x7), 1)
+        ),
+
+        bit.bor( -- top right
+            bit.lshift(bit.band(tr.r, 0x3F), 16),
+            bit.lshift(bit.band(tr.g, 0x3F), 10),
+            bit.lshift(bit.band(tr.b, 0x3F), 4),
+            bit.lshift(bit.band(tr.level, 0x7), 1)
+        ),
+
+        bit.bor( -- bottom left
+            bit.lshift(bit.band(bl.r, 0x3F), 16),
+            bit.lshift(bit.band(bl.g, 0x3F), 10),
+            bit.lshift(bit.band(bl.b, 0x3F), 4),
+            bit.lshift(bit.band(bl.level, 0x7), 1)
+        ),
+
+        bit.bor( -- bottom right
+            bit.lshift(bit.band(br.r, 0x3F), 16),
+            bit.lshift(bit.band(br.g, 0x3F), 10),
+            bit.lshift(bit.band(br.b, 0x3F), 4),
+            bit.lshift(bit.band(br.level, 0x7), 1)
+        ),
+    }
+end
+
+function chunk:generate_lightmap()
+    local light_points = {}
+    for y = 1, HEIGHT * 2 do
+        light_points[y] = {}
+        for x = 1, WIDTH * 2 do
+            light_points[y][x] = 0
+        end
+    end
+    --[[
+    the idea is:
+    -> generate points in the following style: https://i.imgur.com/bfDad8d.png
+    -> every point will contain the light level that ranges from 0 to 2,
+        - 0 being completely black, 2 being white, the value will be lerped from shader
+        - points affected by a light, will have a tint value, otherwise it will just use the default environment color
+    - go through all light objects in the chunk, use the light's range to update the lightmap point tint
+    - light tint data is 6 bits for each color channel, light level will work with just 2, in total 20 bits, just enough to fill the second data
+        - Red (6 bits) 64
+        - Green (6 bits) 64
+        - Blue (6 bits) 64
+        - Level (3 bits) 7
+        (It will lose some precision, 256/64, 4x) 
+
+    - in add quad the respective point will be used for each vertex's light data, we will need a fetch_light(x, y) function.
+        - top left would use fetch_light(x, y), etc..
+    ]]
+end
+
+function chunk:build()
     -- discard old mesh
     if(self.mesh ~= nil) then
         self.mesh:release()
@@ -195,14 +270,15 @@ function chunk:build(test)
             bit.lshift(bit.band(height, 0x7F), 25)
         )
 
-        local texture_index = bit.lshift(bit.band(start_tile.texture_index, 0xFFF), 20)
+        local texture_index = bit.lshift(bit.band(start_tile.texture_index, 0xFF), 24) -- 8 bits should be enough
 
         -- add to our vertexbuffer
+        local light_data = self:fetch_lights(x, y)
         buffer:add_quad(
-            {data, bit.bor(texture_index, bit.lshift(bit.band(0, 0x7), 17))}, -- top left
-            {data, bit.bor(texture_index, bit.lshift(bit.band(1, 0x7), 17))}, -- top right
-            {data, bit.bor(texture_index, bit.lshift(bit.band(2, 0x7), 17))}, -- bottom left
-            {data, bit.bor(texture_index, bit.lshift(bit.band(3, 0x7), 17))} -- bottom right
+            {data, bit.bor(texture_index, bit.lshift(bit.band(0, 0x3), 22), light_data[1])}, -- top left
+            {data, bit.bor(texture_index, bit.lshift(bit.band(1, 0x3), 22), light_data[2])}, -- top right
+            {data, bit.bor(texture_index, bit.lshift(bit.band(2, 0x3), 22), light_data[3])}, -- bottom left
+            {data, bit.bor(texture_index, bit.lshift(bit.band(3, 0x3), 22), light_data[4])} -- bottom right
         )
     end
 
@@ -214,8 +290,12 @@ function chunk:build(test)
         end
 
         for y = 1, HEIGHT do
-            local tile = self:get_tile(x, y)            
-            if(tile ~= nil and not tested[x][y]) then
+            local tile = self:get_tile(x, y)      
+            if(tile ~= nil) then
+                add_quad(x, y, 1, 1, tile)
+            end
+            -- greedy meshing      
+            --[[if(tile ~= nil and not tested[x][y]) then
                 tested[x][y] = true
                 
                 local start = {
@@ -241,7 +321,7 @@ function chunk:build(test)
 
                 -- create new quad
                 add_quad(start.x, start.y, size.x, size.y, tile)
-            end
+            end--]]
         end
     end
 

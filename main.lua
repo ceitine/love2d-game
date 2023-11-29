@@ -30,7 +30,7 @@ end
 chunk = require("render/chunk")
 
 local chunks = {}
-local size = 2
+local size = 4
 for x = 0, size do
     for y = 0, size do
         chunks[y * (size + 1) + x] = chunk.new(x, y)
