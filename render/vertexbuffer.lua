@@ -3,11 +3,15 @@ local mt = {
     -- index data
     __index = vertexbuffer
 }
-vertexbuffer.vertices = {}
-vertexbuffer.indices = {}
+
+-- variables
+vertexbuffer.vertices = nil
+vertexbuffer.indices = nil
 
 function vertexbuffer:create(o)
     local instance = o or {}
+    instance.vertices = {}
+    instance.indices = {}
     setmetatable(instance, mt)
     self.__index = instance
     return instance

@@ -1,41 +1,41 @@
 -- math, utility, rendering includes
+require("util/constants")
+
 mathx = require("util/mathx")
 hook = require("util/hook")
 stringx = require("util/stringx")
 color = require("render/color")
 render = require("render/render")
 time = require("util/time")
+scenecamera = require("scene/scenecamera")
+scene = require("scene/scene")
 
 -- love
 love.load = function()
-    hook.call("load")
+    hook.call(HOOK_LOAD)
 end
 
 love.update = function(dt)
     time.delta = dt
     time.now = time.now + dt
 
-    hook.call("update", dt)
+    hook.call(HOOK_UPDATE, dt)
 end
 
 love.draw = function()
-    hook.call("draw")
+    hook.call(HOOK_DRAW)
 end
 
 love.wheelmoved = function(x, y)
-    hook.call("wheelmoved", x, y)
+    hook.call(HOOK_WHEELMOVED, x, y)
 end
 
 -- testing :D
-chunk = require("render/chunk")
+local world = scene.new()
+local camera = scenecamera.new()
+camera.scene = world
 
-local chunks = {}
-local size = 4
-for x = 0, size do
-    for y = 0, size do
-        chunks[y * (size + 1) + x] = chunk.new(x, y)
-    end
-end
+hook.register("world_render", HOOK_DRAW, function() if(camera) then camera:render() end end)
 
 local scale_options = {
     8,
@@ -48,13 +48,7 @@ local scale_options = {
 }
 
 local center_index = math.ceil(#scale_options / 2)
-local center = scale_options[center_index]
-
-local camera = {
-    x = 0,
-    y = 0,
-    
-    scale = center,
+local camera_settings = {
     scale_option = center_index,
 
     target = {
@@ -65,47 +59,34 @@ local camera = {
     drag = nil,
 }
 
--- could eventually check if chunk is within screen bounds and ignore if it isn't :D
-hook.register("", "draw", function()
-    render.setcol(color.WHITE)
-    for _, chunk in pairs(chunks) do
-        local x = camera.x * camera.scale + love.graphics.getWidth() / 2
-        local y = camera.y * camera.scale + love.graphics.getHeight() / 2
-        chunk:render(x, y, camera.scale)
-    end
-    render.set_shader()
-
-    render.string(math.floor(1 / time.delta), 0, 0, color.new(60, 200, 60), 0.8)
-    render.rectangle(love.graphics.getWidth() / 2 - 1, love.graphics.getHeight() / 2 - 1, 2, 2, color.WHITE)
-end)
-
-hook.register("", "update", function(dt)
-    local target = scale_options[camera.scale_option]
+hook.register("camera_update", "update", function(dt)
+    -- some camera movement :D
+    local target = scale_options[camera_settings.scale_option]
     camera.scale = mathx.lerp(camera.scale, target, time.delta * 8)
 
-    camera.x = mathx.lerp(camera.x, camera.target.x, time.delta * 8)
-    camera.y = mathx.lerp(camera.y, camera.target.y, time.delta * 8)
+    camera.position.x = mathx.lerp(camera.position.x, camera_settings.target.x, time.delta * 8)
+    camera.position.y = mathx.lerp(camera.position.y, camera_settings.target.y, time.delta * 8)
 
     if(love.mouse.isDown(1)) then
-        if(camera.drag == nil) then
-            camera.drag = {
+        if(camera_settings.drag == nil) then
+            camera_settings.drag = {
                 x = love.mouse.getX(),
                 y = love.mouse.getY(),
-                old = {x = camera.x * camera.scale, y = camera.y * camera.scale},
+                old = {x = camera.position.x * camera.scale, y = camera.position.y * camera.scale},
             }
         end
 
         local scale = 1 / camera.scale
-        local dx = love.mouse.getX() - camera.drag.x
-        local dy = love.mouse.getY() - camera.drag.y
+        local dx = love.mouse.getX() - camera_settings.drag.x
+        local dy = love.mouse.getY() - camera_settings.drag.y
 
-        camera.target.x = camera.drag.old.x * scale + dx * scale
-        camera.target.y = camera.drag.old.y * scale + dy * scale
+        camera_settings.target.x = camera_settings.drag.old.x * scale + dx * scale
+        camera_settings.target.y = camera_settings.drag.old.y * scale + dy * scale
     else
-        camera.drag = nil
+        camera_settings.drag = nil
     end
 end)
 
-hook.register("", "wheelmoved", function(x, y)
-    camera.scale_option = math.min(math.max(camera.scale_option + y, 1), #scale_options)
+hook.register("camera_wheel", "wheelmoved", function(x, y)
+    camera_settings.scale_option = math.min(math.max(camera_settings.scale_option + y, 1), #scale_options)
 end)

@@ -5,8 +5,8 @@ vertexbuffer = require("render/vertexbuffer")
 local all = {}
 local chunk = {}
 chunk.all = all
-chunk.lightmap = {}
-chunk.tiles = {}
+chunk.lightmap = nil
+chunk.tiles = nil
 chunk.x = 0
 chunk.y = 0
 chunk.tile_count = 0
@@ -17,8 +17,9 @@ local mt = {
 }
 
 -- defaults, note: the limit for these is the max value of an 8-bit integer
-local WIDTH = 32
-local HEIGHT = 32
+local WIDTH, HEIGHT = 32, 32
+chunk.WIDTH = WIDTH
+chunk.HEIGHT = HEIGHT
 local AMBIENT_LIGHT = {
     r = 63, 
     g = 63, -- color 0-63
@@ -31,17 +32,17 @@ local vtx_format = {
     {"VertexPosition", "float", 2},
 }
 
-local shader = love.graphics.newShader("shaders/chunk.glsl")
+chunk.shader = chunk.shader or love.graphics.newShader("shaders/chunk.glsl")
 local atlas = textureatlas.new("assets/atlas.png", 32)
-shader:send("tex", atlas.image)
+chunk.shader:send("tex", atlas.image)
 
 -- greedy meshing
 local function tile_match(left, right)
     return left ~= nil and right ~= nil
-        and left.texture_index == right.texture_index
+       and left.texture_index == right.texture_index
 end
 
-local function try_spread_x(chunk, can_spread, tested, start, size, start_tile)
+local function try_spread_x(chunk, can_spread, tested, start, size, start_tile) -- todo: something is fucked with this 
     local y_limit = start.y + size.y - 1
     for y = start.y, y_limit do
         if(not can_spread.x) then
@@ -106,14 +107,14 @@ local function try_spread_y(chunk, can_spread, tested, start, size, start_tile)
 end
 
 -- functions
-local function set_chunk_at(x, y, chunk)
+local function set_chunk_at(x, y, chunk, all)
     -- append new row
-    if(chunk.all[x] == nil) then
-        chunk.all[x] = {}
+    if(all[x] == nil) then
+        all[x] = {}
     end
 
     -- append chunk
-    chunk.all[x][y] = chunk
+    all[x][y] = chunk
 end
 
 function chunk:create(o)
@@ -123,32 +124,33 @@ function chunk:create(o)
     return instance
 end
 
-function chunk.new(x, y)
+function chunk.new(x, y, all)
     local instance = chunk:create()
     instance.x = x or 0
     instance.y = y or 0
+    instance.all = all or chunk.all
+    instance.tiles = {}
+    instance.lightmap = {}
 
     for x = 1, WIDTH do
         for y = 1, HEIGHT do
-            instance:set_tile(tile.new(mathx.random(0, atlas.count - 1)), x, y)
+            local n = mathx.random(0, 1)
+            if(n ~= 2) then
+                instance:set_tile(tile.new(0), x, y)
+            end
         end
     end
 
     instance:build()
     
-    set_chunk_at(x, y, instance)
+    set_chunk_at(x, y, instance, instance.all)
 
     return instance
 end
 
 function chunk:set_tile(tile, x, y)
-    -- check if within bounds
-    if(x < 1 or x > WIDTH or y < 1 or y > HEIGHT) then
-        return
-    end
-
     -- append new row
-    if(self.tiles[y] == nil) then
+    if(self.tiles[y] == nil and tile ~= nil) then
         self.tiles[y] = {}
     end
 
@@ -159,7 +161,7 @@ end
 
 function chunk:get_tile(x, y)
     -- check if within bounds
-    if(x < 1 or x > WIDTH or y < 1 or y > HEIGHT or self.tiles[y] == nil) then
+    if(self.tiles[y] == nil) then
         return nil
     end
 
@@ -174,8 +176,8 @@ function chunk:get_neighbor(x, y)
         self.y + math.ceil((y + 1) / HEIGHT - 1)
     }
     
-    if(chunk.all[x] ~= nil and chunk.all[x][y] ~= nil) then
-        data.chunk = chunk.all[x][y]
+    if(self.all[x] ~= nil and self.all[x][y] ~= nil) then
+        data.chunk = self.all[x][y]
         data.tile = data.chunk:get_tile(
             (x % WIDTH + WIDTH) % WIDTH, 
             (y % HEIGHT + HEIGHT) % HEIGHT
@@ -291,11 +293,11 @@ function chunk:build()
 
         for y = 1, HEIGHT do
             local tile = self:get_tile(x, y)      
-            if(tile ~= nil) then
+            --[[if(tile ~= nil) then
                 add_quad(x, y, 1, 1, tile)
-            end
+            end--]]
             -- greedy meshing      
-            --[[if(tile ~= nil and not tested[x][y]) then
+            if(tile ~= nil and not tested[x][y]) then
                 tested[x][y] = true
                 
                 local start = {
@@ -321,7 +323,7 @@ function chunk:build()
 
                 -- create new quad
                 add_quad(start.x, start.y, size.x, size.y, tile)
-            end--]]
+            end
         end
     end
 
@@ -338,13 +340,12 @@ function chunk:render(x, y, scale)
 
     -- relative positioning
     local scale = scale or SCALE
-    shader:send("scale", scale)
+    chunk.shader:send("scale", scale)
 
     local ox = self.x * scale * WIDTH - scale + (x or 0)
     local oy = self.y * scale * HEIGHT - scale + (y or 0)
 
     -- draw our chunk
-    render.set_shader(shader)
     love.graphics.draw(self.mesh, ox, oy)
 end
 

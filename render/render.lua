@@ -8,6 +8,11 @@ function render.setcol(col)
     love.graphics.setColor(col.r / 255, col.g / 255, col.b / 255, col.a / 255)
 end
 
+function render.line(x1, y1, x2, y2, col)
+    render.setcol(col or color.WHITE)
+    love.graphics.line(x1, y1, x2, y2)
+end
+
 function render.string(text, x, y, col, scale, rotation)
     -- null check some variables
     col = col or color.WHITE
@@ -46,6 +51,6 @@ function render.set_shader(shader)
 end
 
 -- set font
-hook.register("render_load", "load", love.graphics.setFont(render.DEFAULT_FONT))
+hook.register("render_load", HOOK_LOAD, love.graphics.setFont(render.DEFAULT_FONT))
 
 return render

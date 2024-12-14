@@ -2,7 +2,7 @@ local hook = {}
 local cache = {}
 
 function hook.register(identifier, event, callback)
-    if(cache[event] == null) then
+    if(cache[event] == nil) then
         cache[event] = {}
     end
 
@@ -25,8 +25,8 @@ function hook.call(event, ...)
     if(cache[event] == nil) then
         return
     end
-    
-    for _, v in pairs(cache[event]) do
+
+    for identifier, v in pairs(cache[event]) do
         v(...)
     end
 end

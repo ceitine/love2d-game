@@ -78,6 +78,9 @@ function color:lerp(b, t)
 end
 
 -- some constants
+color.RED = color.new(255, 0, 0, 255)
+color.GREEN = color.new(0, 255, 0, 255)
+color.BLUE = color.new(0, 0, 255, 255)
 color.WHITE = color.new(255, 255, 255, 255)
 color.BLACK = color.new(0, 0, 0, 255)
 color.TRANSPARENT = color.new(0, 0, 0, 0)
