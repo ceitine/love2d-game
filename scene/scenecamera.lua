@@ -45,7 +45,9 @@ function scenecamera:render()
     end
     
     -- draw scene
-    self.scene:render(self)
+    local x = self.position.x * self.scale + love.graphics.getWidth() / 2
+    local y = self.position.y * self.scale + love.graphics.getHeight() / 2
+    self.scene:render(x, y, self.scale)
 
     -- draw fps and crosshair
     render.string(math.floor(1 / time.delta), 0, 0, color.new(60, 200, 60), 0.8)

@@ -72,11 +72,11 @@ hook.register("camera_update", "update", function(dt)
             camera_settings.drag = {
                 x = love.mouse.getX(),
                 y = love.mouse.getY(),
-                old = {x = camera.position.x * camera.scale, y = camera.position.y * camera.scale},
+                old = {x = camera.position.x * camera.scale, y = camera.position.y * camera.scale, scale = camera.scale},
             }
         end
 
-        local scale = 1 / camera.scale
+        local scale = 1 / camera_settings.drag.old.scale
         local dx = love.mouse.getX() - camera_settings.drag.x
         local dy = love.mouse.getY() - camera_settings.drag.y
 

@@ -16,7 +16,7 @@ function scene:create(o)
     instance.entities = {}
     instance.flat_chunks = {}
 
-    local size = 1
+    local size = 4
     for x = 0, size do
         for y = 0, size do
             instance.flat_chunks[y * (size + 1) + x] = chunk.new(x, y, instance.chunks)
@@ -93,6 +93,10 @@ function scene:raycast(from, to, capture_path) -- this is in tile space!
         tDeltaY = 1.0 / -dirY
     end
 
+    if(capture_path and #result.path == 0) then
+        result.path[0] = {x = math.floor(result.position.x), y = math.floor(result.position.y)}
+    end
+
     -- travel our ray!
     local dist_travelled = 0
     while(math.abs(dist_travelled) <= length) do
@@ -130,20 +134,25 @@ function scene:raycast(from, to, capture_path) -- this is in tile space!
         end
     end
 
-    result.path[#result.path] = nil
+    if(capture_path) then result.path[#result.path] = nil end
 
     return result
 end
 
-function scene:render(camera)
+function scene:render(x, y, scale)
     -- draw chunks
     render.set_shader(chunk.shader)
     for _, chunk in pairs(self.flat_chunks) do
-        local x = camera.position.x * camera.scale + love.graphics.getWidth() / 2 + camera.scale
-        local y = camera.position.y * camera.scale + love.graphics.getHeight() / 2
-        chunk:render(x, y, camera.scale)
+        chunk:render(x, y, scale)
     end
     render.set_shader()
+
+    for _, chunk in pairs(self.flat_chunks) do
+        for _, v in pairs(chunk.quads) do 
+            local col = color.from32(mathx.random(0, 16000000, v.x + v.y + v.w + v.h)):with_alpha(150)
+            render.rectangle(x + (v.x - 1 + chunk.x * chunk.WIDTH) * scale, y + (v.y - 1 + chunk.y * chunk.HEIGHT) * scale, v.w * scale, v.h * scale, col)
+        end
+    end
 end
 
 return scene

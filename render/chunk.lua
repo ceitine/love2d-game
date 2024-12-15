@@ -30,6 +30,7 @@ local AMBIENT_LIGHT = {
 -- shader
 local vtx_format = {
     {"VertexPosition", "float", 2},
+    {"VertexTexCoord", "float", 3}
 }
 
 chunk.shader = chunk.shader or love.graphics.newShader("shaders/chunk.glsl")
@@ -42,7 +43,7 @@ local function tile_match(left, right)
        and left.texture_index == right.texture_index
 end
 
-local function try_spread_x(chunk, can_spread, tested, start, size, start_tile) -- todo: something is fucked with this 
+local function try_spread_x(chunk, can_spread, tested, start, size, start_tile)
     local y_limit = start.y + size.y - 1
     for y = start.y, y_limit do
         if(not can_spread.x) then
@@ -263,24 +264,54 @@ function chunk:build()
     end
 
     local buffer = vertexbuffer.new()
-    local function add_quad(x, y, width, height, start_tile)
+    self.quads = {}
+    local function add_quad(x, y, width, height, start_tile) -- todo: something still fucked here?
         -- pack data and append vertices
-        local data = bit.bor(
-            bit.lshift(bit.band(x, 0x7F), 4),
-            bit.lshift(bit.band(y, 0x7F), 11),
-            bit.lshift(bit.band(width, 0x7F), 18),
-            bit.lshift(bit.band(height, 0x7F), 25)
+        --[[ local width_data = bit.lshift(bit.band(width, 0x7F), 18)
+        local height_data = bit.lshift(bit.band(height, 0x7F), 25)
+        
+        local top_left = bit.bor(
+            bit.lshift(bit.band(x - 1, 0x7F), 4),
+            bit.lshift(bit.band(y - 1, 0x7F), 11),
+            width_data, height_data
         )
 
+        local top_right = bit.bor(
+            bit.lshift(bit.band(x - 1 + width, 0x7F), 4),
+            bit.lshift(bit.band(y - 1, 0x7F), 11),
+            width_data, height_data
+        )
+
+        local bottom_left = bit.bor(
+            bit.lshift(bit.band(x - 1, 0x7F), 4),
+            bit.lshift(bit.band(y - 1 + height, 0x7F), 11),
+            width_data, height_data
+        )
+
+        local bottom_right = bit.bor(
+            bit.lshift(bit.band(x - 1 + width, 0x7F), 4),
+            bit.lshift(bit.band(y - 1 + height, 0x7F), 11),
+            width_data, height_data
+        )
+        
         local texture_index = bit.lshift(bit.band(start_tile.texture_index, 0xFF), 24) -- 8 bits should be enough
 
         -- add to our vertexbuffer
-        local light_data = self:fetch_lights(x, y)
+        -- local light_data = self:fetch_lights(x, y)
         buffer:add_quad(
-            {data, bit.bor(texture_index, bit.lshift(bit.band(0, 0x3), 22), light_data[1])}, -- top left
-            {data, bit.bor(texture_index, bit.lshift(bit.band(1, 0x3), 22), light_data[2])}, -- top right
-            {data, bit.bor(texture_index, bit.lshift(bit.band(2, 0x3), 22), light_data[3])}, -- bottom left
-            {data, bit.bor(texture_index, bit.lshift(bit.band(3, 0x3), 22), light_data[4])} -- bottom right
+            {top_left, bit.bor(texture_index, bit.lshift(bit.band(0, 0x3), 22), 0)}, -- top left
+            {top_right, bit.bor(texture_index, bit.lshift(bit.band(1, 0x3), 22), 0)}, -- top right
+            {bottom_left, bit.bor(texture_index, bit.lshift(bit.band(2, 0x3), 22), 0)}, -- bottom left
+            {bottom_right, bit.bor(texture_index, bit.lshift(bit.band(3, 0x3), 22), 0)} -- bottom right
+        ) --]]
+
+        self.quads[#self.quads + 1] = {x = x, y = y, w = width, h = height}
+
+        buffer:add_quad( 
+            {x, y, 0, 0, start_tile.texture_index},
+            {x + width, y, width, 0, start_tile.texture_index},
+            {x, y + height, 0, height, start_tile.texture_index},
+            {x + width, y + height, width, height, start_tile.texture_index}
         )
     end
 
@@ -328,6 +359,8 @@ function chunk:build()
     end
 
     -- create mesh
+    if(#buffer.indices == 0) then return end
+
     self.mesh = love.graphics.newMesh(vtx_format, buffer.vertices, "triangles")
     self.mesh:setVertexMap(buffer.indices)
     self.vertex_count = #buffer.vertices
