@@ -59,7 +59,10 @@ local camera_settings = {
     drag = nil,
 }
 
-hook.register("camera_update", "update", function(dt)
+hook.register("scene_update", "update", function(dt)
+    -- update scene
+    world:update(dt)
+
     -- some camera movement :D
     local target = scale_options[camera_settings.scale_option]
     camera.scale = mathx.lerp(camera.scale, target, time.delta * 8)
@@ -77,8 +80,8 @@ hook.register("camera_update", "update", function(dt)
         end
 
         local scale = 1 / camera_settings.drag.old.scale
-        local dx = love.mouse.getX() - camera_settings.drag.x
-        local dy = love.mouse.getY() - camera_settings.drag.y
+        local dx = camera_settings.drag.x - love.mouse.getX()
+        local dy = camera_settings.drag.y - love.mouse.getY()
 
         camera_settings.target.x = camera_settings.drag.old.x * scale + dx * scale
         camera_settings.target.y = camera_settings.drag.old.y * scale + dy * scale

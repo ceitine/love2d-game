@@ -27,23 +27,39 @@ end
 
 -- helpers
 function color:with_red(red)
-    self.r = red or 255
-    return self
+    local col = color.new()
+    col.r = red or 255
+    col.g = self.g
+    col.b = self.b
+    col.a = self.a
+    return col
 end
 
 function color:with_green(green)
-    self.g = green or 255
-    return self
+    local col = color.new()
+    col.r = self.r
+    col.g = green or 255
+    col.b = self.g
+    col.a = self.a
+    return col
 end
 
 function color:with_blue(blue)
-    self.b = blue or 255
-    return self
+    local col = color.new()
+    col.r = self.r
+    col.g = self.g
+    col.b = blue or 255
+    col.a = self.a
+    return col
 end
 
 function color:with_alpha(alpha)
-    self.a = alpha or 255
-    return self
+    local col = color.new()
+    col.r = self.r
+    col.g = self.g
+    col.b = self.b
+    col.a = alpha or 255
+    return col
 end
 
 -- math utility

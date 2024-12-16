@@ -34,8 +34,8 @@ local vtx_format = {
 }
 
 chunk.shader = chunk.shader or love.graphics.newShader("shaders/chunk.glsl")
-local atlas = textureatlas.new("assets/atlas.png", 32)
-chunk.shader:send("tex", atlas.image)
+TEXTURE_ATLAS = TEXTURE_ATLAS or textureatlas.new("assets/atlas.png", 8)
+chunk.shader:send("tex", TEXTURE_ATLAS.image)
 
 -- greedy meshing
 local function tile_match(left, right)
@@ -125,19 +125,20 @@ function chunk:create(o)
     return instance
 end
 
-function chunk.new(x, y, all)
+function chunk.new(x, y, scene)
     local instance = chunk:create()
     instance.x = x or 0
     instance.y = y or 0
-    instance.all = all or chunk.all
+    instance.all = (scene and scene.chunks) or chunk.all
+    instance.scene = scene
     instance.tiles = {}
-    instance.lightmap = {}
+    -- instance.lightmap = {}
 
     for x = 1, WIDTH do
         for y = 1, HEIGHT do
             local n = mathx.random(0, 1)
             if(n ~= 2) then
-                instance:set_tile(tile.new(0), x, y)
+                instance:set_tile(tile.new(n), x, y)
             end
         end
     end
@@ -264,7 +265,6 @@ function chunk:build()
     end
 
     local buffer = vertexbuffer.new()
-    self.quads = {}
     local function add_quad(x, y, width, height, start_tile) -- todo: something still fucked here?
         -- pack data and append vertices
         --[[ local width_data = bit.lshift(bit.band(width, 0x7F), 18)
@@ -305,8 +305,9 @@ function chunk:build()
             {bottom_right, bit.bor(texture_index, bit.lshift(bit.band(3, 0x3), 22), 0)} -- bottom right
         ) --]]
 
-        self.quads[#self.quads + 1] = {x = x, y = y, w = width, h = height}
+        -- self.quads[#self.quads + 1] = {x = x, y = y, w = width, h = height}
 
+        -- add quad to buffer
         buffer:add_quad( 
             {x, y, 0, 0, start_tile.texture_index},
             {x + width, y, width, 0, start_tile.texture_index},

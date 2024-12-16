@@ -1,4 +1,5 @@
 local chunk = require("render/chunk")
+local physicsobj = require("physics/physicsobj")
 local scene = {}
 local mt = {
     -- index data
@@ -15,11 +16,14 @@ function scene:create(o)
     instance.chunks = {}
     instance.entities = {}
     instance.flat_chunks = {}
+    instance.objects = {}
 
-    local size = 4
-    for x = 0, size do
-        for y = 0, size do
-            instance.flat_chunks[y * (size + 1) + x] = chunk.new(x, y, instance.chunks)
+    local size = 3
+    local min = math.floor(-size / 2)
+    local max = math.floor(size / 2)
+    for x = min, max do
+        for y = min, max do
+            instance.flat_chunks[y * (size + 1) + x] = chunk.new(x, y, instance)
         end
     end
 
@@ -30,6 +34,7 @@ end
 
 function scene.new()
     local instance = scene:create()
+    SCENE = instance
     return instance
 end
 
@@ -54,15 +59,8 @@ function scene:query_pos(x, y) -- this is in tile space!
     return result
 end
 
-function scene:raycast(from, to, capture_path) -- this is in tile space!
+function scene:raycast(from, to, capture_path) -- this is in tile space!    
     -- some initial variables
-    local length = math.sqrt(math.pow(to.x - from.x, 2) + math.pow(to.y - from.y, 2))
-    local dirX, dirY = (to.x - from.x) / length, (to.y - from.y) / length
-
-    local stepX, stepY
-    local tMaxX, tMaxY
-    local tDeltaX, tDeltaY
-
     local result = {
         position = {x = from.x, y = from.y},
         tile_position = {x = 0, y = 0},
@@ -70,9 +68,18 @@ function scene:raycast(from, to, capture_path) -- this is in tile space!
         hit = false
     }
 
-    if(capture_path) then result.path = {} end
+    local length = math.sqrt(math.pow(to.x - from.x, 2) + math.pow(to.y - from.y, 2))
+
+    if(capture_path) then 
+        result.path = { {x = math.floor(result.position.x), y = math.floor(result.position.y)} } 
+    end
 
     -- lets get the direction..
+    local dirX, dirY = (to.x - from.x) / length, (to.y - from.y) / length
+    local stepX, stepY
+    local tMaxX, tMaxY
+    local tDeltaX, tDeltaY
+
     if(dirX >= 0) then
         stepX = 1.0
         tMaxX = (math.floor(result.position.x) + 1 - result.position.x) / dirX
@@ -93,10 +100,6 @@ function scene:raycast(from, to, capture_path) -- this is in tile space!
         tDeltaY = 1.0 / -dirY
     end
 
-    if(capture_path and #result.path == 0) then
-        result.path[0] = {x = math.floor(result.position.x), y = math.floor(result.position.y)}
-    end
-
     -- travel our ray!
     local dist_travelled = 0
     while(math.abs(dist_travelled) <= length) do
@@ -110,7 +113,7 @@ function scene:raycast(from, to, capture_path) -- this is in tile space!
             result.chunk = query.chunk
             result.tile = query.tile
             result.tile_position = query.tile_position
-            result.hit_position = {x = dirX * dist_travelled, y = dirY * dist_travelled}
+            result.hit_position = {x = dirX * dist_travelled + from.x, y = dirY * dist_travelled + from.y}
             result.hit = true
             return result
         end
@@ -147,11 +150,31 @@ function scene:render(x, y, scale)
     end
     render.set_shader()
 
+    --[[
     for _, chunk in pairs(self.flat_chunks) do
         for _, v in pairs(chunk.quads) do 
             local col = color.from32(mathx.random(0, 16000000, v.x + v.y + v.w + v.h)):with_alpha(150)
             render.rectangle(x + (v.x - 1 + chunk.x * chunk.WIDTH) * scale, y + (v.y - 1 + chunk.y * chunk.HEIGHT) * scale, v.w * scale, v.h * scale, col)
         end
+    end
+    --]]
+end
+
+local spawned = false
+function scene:update(dt)
+    -- spawn some debug objects
+    if(love.keyboard.isDown("space")) then
+        if(not spawned) then
+            self.objects[#self.objects + 1] = physicsobj.new(COLLIDER_RECT, {x = CAMERA.position.x, y = CAMERA.position.y}, math.random(2, 5), math.random(1, 5), 0)
+            spawned = true
+        end
+    else 
+        spawned = false
+    end
+
+    -- update all physics objects
+    for _, obj in pairs(self.objects) do
+        obj:step(dt)
     end
 end
 

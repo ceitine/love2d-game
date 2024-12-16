@@ -13,7 +13,7 @@ scenecamera.scale = 32
 function scenecamera:create(o)
     local instance = o or {}
     instance.position = {x = 0, y = 0}
-    instance.scene = nil
+    instance.scene = SCENE
     setmetatable(instance, mt)
     self.__index = instance
     return instance
@@ -21,21 +21,22 @@ end
 
 function scenecamera.new()
     local instance = scenecamera:create()
+    CAMERA = instance
     return instance
 end
 
 -- instance functions
 function scenecamera:to_screen(x, y)
     return {
-        x = (x - 1) * self.scale + self.position.x * self.scale + love.graphics.getWidth() / 2, 
-        y = (y - 1) * self.scale + self.position.y * self.scale + love.graphics.getHeight() / 2
+        x = (x - 1) * self.scale - self.position.x * self.scale + love.graphics.getWidth() / 2, 
+        y = (y - 1) * self.scale - self.position.y * self.scale + love.graphics.getHeight() / 2
     }
 end
 
 function scenecamera:to_world(x, y)
     return { 
-        x = (x - love.graphics.getWidth() / 2 - self.position.x * self.scale) / self.scale + 1, 
-        y = (y - love.graphics.getHeight() / 2 - self.position.y * self.scale) / self.scale + 1
+        x = (x - love.graphics.getWidth() / 2 + self.position.x * self.scale) / self.scale + 1, 
+        y = (y - love.graphics.getHeight() / 2 + self.position.y * self.scale) / self.scale + 1
     }
 end
 
@@ -45,14 +46,14 @@ function scenecamera:render()
     end
     
     -- draw scene
-    local x = self.position.x * self.scale + love.graphics.getWidth() / 2
-    local y = self.position.y * self.scale + love.graphics.getHeight() / 2
+    local x = -self.position.x * self.scale + love.graphics.getWidth() / 2
+    local y = -self.position.y * self.scale + love.graphics.getHeight() / 2
     self.scene:render(x, y, self.scale)
 
     -- draw fps and crosshair
     render.string(math.floor(1 / time.delta), 0, 0, color.new(60, 200, 60), 0.8)
 
-    -- raycast
+    -- raycast debugging
     local endX, endY = love.mouse.getX(), love.mouse.getY()
     local from = self:to_world(love.graphics.getWidth() / 2, love.graphics.getHeight() / 2)
     local to = self:to_world(endX, endY)
@@ -66,7 +67,6 @@ function scenecamera:render()
         render.rectangle(world_pos.x, world_pos.y, self.scale, self.scale, color.GREEN)
     end
 
-    -- debug render
     if(raycast.hit) then
         local world_pos = self:to_screen(
             math.floor(raycast.position.x), 
@@ -76,8 +76,8 @@ function scenecamera:render()
         render.rectangle(world_pos.x, world_pos.y, self.scale, self.scale, color.WHITE)
 
         local hit_pos = self:to_screen(
-            raycast.hit_position.x + from.x,
-            raycast.hit_position.y + from.y
+            raycast.hit_position.x,
+            raycast.hit_position.y
         )
 
         endX, endY = hit_pos.x, hit_pos.y
@@ -93,6 +93,55 @@ function scenecamera:render()
         endX, endY,
         color.RED
     )
+
+    -- physics debugging
+    for _, obj in pairs(self.scene.objects) do
+        local screen_pos = self:to_screen(
+            obj.position.x - obj.shape.pivot.x,
+            obj.position.y - obj.shape.pivot.y
+        )
+
+        if(obj.type == COLLIDER_RECT) then
+            love.graphics.push()
+                love.graphics.translate(screen_pos.x + self.scale, screen_pos.y + self.scale)
+                love.graphics.translate(obj.shape.pivot.x * self.scale, obj.shape.pivot.y * self.scale)
+                love.graphics.rotate(obj.rotation * math.pi / 180)
+                love.graphics.translate(-obj.shape.pivot.x * self.scale, -obj.shape.pivot.y * self.scale)
+
+                render.rectangle(
+                    0, 0,
+                    obj.shape.width * self.scale, obj.shape.height * self.scale, 
+                    color.WHITE, "line"
+                )
+            love.graphics.pop()
+
+            local bounds = obj:get_occupied_bounds()
+            local collision
+            for x = bounds.minsX, bounds.maxsX do
+                for y = bounds.minsY, bounds.maxsY do
+                    local col = color.GREEN
+                    if(self.scene:query_pos(x, y).tile ~= nil) then
+                        col = color.RED
+                        if(obj:tile_collision(x, y)) then
+                            col = color.BLUE
+                        end
+                    end
+
+                    local screen_pos = self:to_screen(
+                        math.floor(x),
+                        math.floor(y)
+                    )
+                    
+                    render.rectangle(
+                        screen_pos.x, screen_pos.y,
+                        self.scale, self.scale, 
+                        col:with_alpha(80)
+                    )
+                end
+            end
+           
+        end
+    end
 end
 
 return scenecamera
