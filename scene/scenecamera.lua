@@ -12,7 +12,7 @@ scenecamera.scale = 32
 -- creating new camera instance
 function scenecamera:create(o)
     local instance = o or {}
-    instance.position = {x = 0, y = 0}
+    instance.position = vec2.ZERO:copy()
     instance.scene = SCENE
     setmetatable(instance, mt)
     self.__index = instance
@@ -27,17 +27,17 @@ end
 
 -- instance functions
 function scenecamera:to_screen(x, y)
-    return {
-        x = (x - 1) * self.scale - self.position.x * self.scale + love.graphics.getWidth() / 2, 
-        y = (y - 1) * self.scale - self.position.y * self.scale + love.graphics.getHeight() / 2
-    }
+    return vec2.new(
+       (x - 1) * self.scale - self.position.x * self.scale + love.graphics.getWidth() / 2, 
+       (y - 1) * self.scale - self.position.y * self.scale + love.graphics.getHeight() / 2
+    )
 end
 
 function scenecamera:to_world(x, y)
-    return { 
-        x = (x - love.graphics.getWidth() / 2 + self.position.x * self.scale) / self.scale + 1, 
-        y = (y - love.graphics.getHeight() / 2 + self.position.y * self.scale) / self.scale + 1
-    }
+    return vec2.new( 
+        (x - love.graphics.getWidth() / 2 + self.position.x * self.scale) / self.scale + 1, 
+        (y - love.graphics.getHeight() / 2 + self.position.y * self.scale) / self.scale + 1
+    )
 end
 
 function scenecamera:render()

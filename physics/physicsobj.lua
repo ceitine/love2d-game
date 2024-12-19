@@ -27,19 +27,19 @@ function physicsobj.new(type, pos, ...)
     local vargs = {...}
     local instance = physicsobj:create()
     instance.type = type or COLLIDER_RECT
-    instance.position = pos or {x = 0, y = 0}
+    instance.position = (pos or vec2.ZERO):copy()
     instance.rotation = vargs[3] or 0
-    instance.velocity = {x = 0, y = 0}
+    instance.velocity = vec2.ZERO:copy()
     instance.rotational_velocity = 0
-    instance.gravity = {x = 0, y = 3}
-    instance.force = {x = 0, y = 0}
+    instance.gravity = vec2.new(0, 3)
+    instance.force = vec2.ZERO:copy()
     if(instance.type == COLLIDER_RECT) then
         local w = vargs[1] or 1
         local h = vargs[2] or 1
         instance.shape = {
             width = w,
             height = h,
-            pivot = {x = w / 2, y = h / 2}
+            pivot = vec2.new(w / 2, h / 2)
         }
     else
         error("Invalid collider type for PhysicsObj ".. type)
@@ -67,10 +67,10 @@ local function arithmetic_mean(points)
         sumY = sumY + points[i].y
     end
 
-    return {
-        x = sumX / point_count,
-        y = sumY / point_count
-    }
+    return vec2.new(
+        sumX / point_count,
+        sumY / point_count
+    )
 end
 
 local function polygon_intersection(a, b)
@@ -84,7 +84,7 @@ local function polygon_intersection(a, b)
             local p1 = polygon[i]
             local p2 = polygon[i2]
 
-            local normal = {x = p2.y - p1.y, y = p2.x - p1.x}
+            local normal = vec2.new(p2.y - p1.y, p2.x - p1.x)
             local minA, maxA
             for _, point in pairs(a) do
                 local projected = normal.x * point.x + normal.y * point.y
@@ -106,29 +106,24 @@ local function polygon_intersection(a, b)
             local axis_depth = math.min(maxB - minA, maxA - minB)
             if(axis_depth < depth) then
                 depth = axis_depth
-                direction = normal
+                direction = normal:copy()
             end
         end
     end
 
     -- normalize values
-    local length = math.sqrt(math.pow(direction.x, 2) + math.pow(direction.y, 2))
+    local length = direction:length()
     depth = depth / length -- ?
-    direction.x = direction.x / length
-    direction.y = direction.y / length
+    direction = direction / length
 
     -- make sure normal is correct direction
     local centerA = arithmetic_mean(a)
     local centerB = arithmetic_mean(b)
-    local center_direction = {
-        x = centerB.x - centerA.x,
-        y = centerB.y - centerA.y
-    }
+    local center_direction = centerB - centerA
 
-    local dot_product = center_direction.x * direction.x + center_direction.y + direction.y
-    if(dot_product < 0) then
-        direction.x = -direction.x
-        direction.y = -direction.y
+    local dot_product = center_direction:dot(direction)
+    if(dot_product < 0) then 
+        direction = 0 - direction -- flip direction
     end
 
     return {
@@ -194,18 +189,15 @@ function physicsobj:get_occupied_bounds()
 end
 
 function physicsobj:apply_velocity(x, y)
-    self.velocity.x = self.velocity.x + x
-    self.velocity.y = self.velocity.y + y  
+    self.velocity = self.velocity + vec2.new(x, y)
 end
 
 function physicsobj:apply_force(x, y)
-    self.force.x = x
-    self.force.y = y  
+    self.force = vec2.new(x, y)
 end
 
 function physicsobj:move(x, y)
-    self.position.x = self.position.x + x
-    self.position.y = self.position.y + y
+    self.position = self.position + vec2.new(x, y)
 end
 
 function physicsobj:rotate(deg)

@@ -41,18 +41,18 @@ end
 -- instance functions
 function scene:query_pos(x, y) -- this is in tile space!
     local result = {}
-    result.position = {
-        x = math.floor((x - 1) / chunk.WIDTH),
-        y = math.floor((y - 1) / chunk.HEIGHT)
-    }
+    result.position = vec2.new(
+        math.floor((x - 1) / chunk.WIDTH),
+        math.floor((y - 1) / chunk.HEIGHT)
+    )
 
     local chunk_row = self.chunks[result.position.x]
     result.chunk = chunk_row and chunk_row[result.position.y]
 
-    result.tile_position = {
-        x = (math.floor(x - 1) % chunk.WIDTH + chunk.WIDTH) % chunk.WIDTH + 1,
-        y = (math.floor(y - 1) % chunk.HEIGHT + chunk.HEIGHT) % chunk.HEIGHT + 1
-    }
+    result.tile_position = vec2.new(
+        (math.floor(x - 1) % chunk.WIDTH + chunk.WIDTH) % chunk.WIDTH + 1,
+        (math.floor(y - 1) % chunk.HEIGHT + chunk.HEIGHT) % chunk.HEIGHT + 1
+    )
 
     result.tile = result.chunk and result.chunk:get_tile(result.tile_position.x, result.tile_position.y)
 
@@ -62,20 +62,21 @@ end
 function scene:raycast(from, to, capture_path) -- this is in tile space!    
     -- some initial variables
     local result = {
-        position = {x = from.x, y = from.y},
-        tile_position = {x = 0, y = 0},
-        normal = {x = 0, y = 0},
+        position = from:copy(),
+        tile_position = vec2.ZERO,
+        normal = vec2.ZERO,
         hit = false
     }
 
-    local length = math.sqrt(math.pow(to.x - from.x, 2) + math.pow(to.y - from.y, 2))
+    local length = from:distance(to)
 
     if(capture_path) then 
-        result.path = { {x = math.floor(result.position.x), y = math.floor(result.position.y)} } 
+        result.path = { result.position:floor() } 
     end
 
     -- lets get the direction..
-    local dirX, dirY = (to.x - from.x) / length, (to.y - from.y) / length
+    local dir = from:direction(to)
+    local dirX, dirY = dir.x, dir.y
     local stepX, stepY
     local tMaxX, tMaxY
     local tDeltaX, tDeltaY
@@ -113,7 +114,7 @@ function scene:raycast(from, to, capture_path) -- this is in tile space!
             result.chunk = query.chunk
             result.tile = query.tile
             result.tile_position = query.tile_position
-            result.hit_position = {x = dirX * dist_travelled + from.x, y = dirY * dist_travelled + from.y}
+            result.hit_position = vec2.new(dirX * dist_travelled + from.x, dirY * dist_travelled + from.y)
             result.hit = true
             return result
         end
@@ -123,17 +124,17 @@ function scene:raycast(from, to, capture_path) -- this is in tile space!
             result.position.x = result.position.x + stepX
             dist_travelled = tMaxX
             tMaxX = tMaxX + tDeltaX
-            result.normal = {x = -math.floor(stepX), y = 0}
+            result.normal = vec2.new(-math.floor(stepX), 0)
         else
             result.position.y = result.position.y + stepY
             dist_travelled = tMaxY
             tMaxY = tMaxY + tDeltaY
-            result.normal = {x = 0, y = -math.floor(stepY)}
+            result.normal = vec2.new(0, -math.floor(stepY))
         end
 
         -- capture path
         if(capture_path) then 
-            result.path[#result.path + 1] = {x = result.position.x, y = result.position.y}
+            result.path[#result.path + 1] = result.position:copy()
         end
     end
 
@@ -165,7 +166,7 @@ function scene:update(dt)
     -- spawn some debug objects
     if(love.keyboard.isDown("space")) then
         if(not spawned) then
-            self.objects[#self.objects + 1] = physicsobj.new(COLLIDER_RECT, {x = CAMERA.position.x, y = CAMERA.position.y}, math.random(2, 5), math.random(1, 5), 0)
+            self.objects[#self.objects + 1] = physicsobj.new(COLLIDER_RECT, CAMERA.position, math.random(2, 5), math.random(1, 5), 0)
             spawned = true
         end
     else 
@@ -178,18 +179,10 @@ function scene:update(dt)
         if(love.mouse.isDown(3)) then
             local force_strength = 0.2
             local mouse_world = CAMERA:to_world(love.mouse.getX(), love.mouse.getY())
-            local direction = {
-                x = mouse_world.x - obj.position.x,
-                y = mouse_world.y - obj.position.y
-            }
-            local direction_length = math.sqrt(math.pow(direction.x, 2) + math.pow(direction.y, 2))
-            direction.x = direction.x / direction_length
-            direction.y = direction.y / direction_length
-
+            local direction = obj.position:direction(mouse_world)
             obj:apply_force(direction.x * force_strength, direction.y * force_strength)
         end
 
-        
         obj:step(dt)
     end
 end

@@ -2,6 +2,7 @@
 require("util/constants")
 
 mathx = require("util/mathx")
+vec2 = require("util/vec2")
 hook = require("util/hook")
 stringx = require("util/stringx")
 color = require("render/color")

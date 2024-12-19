@@ -84,11 +84,11 @@ function color:to32()
     return value
 end
 
-function color:lerp(b, t)
-    self.r = mathx.lerp(self.r, b.r, t)
-    self.g = mathx.lerp(self.g, b.g, t)
-    self.b = mathx.lerp(self.b, b.b, t)
-    self.a = mathx.lerp(self.a, b.a, t)
+function color:lerp(b, t, clamp)
+    self.r = mathx.lerp(self.r, b.r, t, clamp)
+    self.g = mathx.lerp(self.g, b.g, t, clamp)
+    self.b = mathx.lerp(self.b, b.b, t, clamp)
+    self.a = mathx.lerp(self.a, b.a, t, clamp)
 
     return self
 end
