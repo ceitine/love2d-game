@@ -30,8 +30,9 @@ function physicsobj.new(type, pos, ...)
     instance.position = pos or {x = 0, y = 0}
     instance.rotation = vargs[3] or 0
     instance.velocity = {x = 0, y = 0}
-    instance.angular_velocity = 0
-    instance.gravity = {x = 0, y = 2.5}
+    instance.rotational_velocity = 0
+    instance.gravity = {x = 0, y = 3}
+    instance.force = {x = 0, y = 0}
     if(instance.type == COLLIDER_RECT) then
         local w = vargs[1] or 1
         local h = vargs[2] or 1
@@ -151,8 +152,8 @@ function physicsobj:get_corners()
 
         for i, corner in pairs(corners) do
             local x, y = rotate_vector(corner.x, corner.y, self.shape.pivot.x, self.shape.pivot.y, rad)
-            corners[i].x = self.position.x - x + self.shape.pivot.x
-            corners[i].y = self.position.y - y + self.shape.pivot.y
+            corners[i].x = self.position.x - x + (self.shape.width - self.shape.pivot.x)
+            corners[i].y = self.position.y - y + (self.shape.height - self.shape.pivot.y) -- this doesn't account for rotation if pivoted, fix
         end
 
         return corners
@@ -197,17 +198,31 @@ function physicsobj:apply_velocity(x, y)
     self.velocity.y = self.velocity.y + y  
 end
 
+function physicsobj:apply_force(x, y)
+    self.force.x = x
+    self.force.y = y  
+end
+
+function physicsobj:move(x, y)
+    self.position.x = self.position.x + x
+    self.position.y = self.position.y + y
+end
+
+function physicsobj:rotate(deg)
+    self.rotation = self.rotation + deg
+end
+
 function physicsobj:step(delta)
     -- apply gravity
     if(self.gravity) then
-        self.velocity.x = self.velocity.x + self.gravity.x * delta
-        self.velocity.y = self.velocity.y + self.gravity.y * delta
+        -- self:apply_velocity(self.gravity.x, self.gravity.y)
     end
 
-    -- apply velocity
-    self.position.x = self.position.x + self.velocity.x
-    self.position.y = self.position.y + self.velocity.y
-    self.rotation = self.rotation + self.angular_velocity
+    -- apply physics
+    self:apply_velocity(self.force.x, self.force.y)
+    self:move(self.velocity.x * delta, self.velocity.y * delta)
+    self:rotate(self.rotational_velocity * delta)
+    self:apply_force(0, 0)
 
     -- resolve collisions
     if(self.type == COLLIDER_RECT) then
@@ -218,13 +233,8 @@ function physicsobj:step(delta)
                 
                 if(self.scene:query_pos(x, y).tile ~= nil) then
                     collision = self:tile_collision(x, y)
-                    if(collision) then                        
-                        self.position.x = self.position.x - collision.normal.x * collision.depth
-                        self.position.y = self.position.y - collision.normal.y * collision.depth
-                        
-                        -- just reset velocity for now
-                        self.velocity.x = 0
-                        self.velocity.y = 0
+                    if(collision) then         
+                        self:move(-collision.normal.x * collision.depth, -collision.normal.y * collision.depth)               
                     end
                 end
 

@@ -174,6 +174,22 @@ function scene:update(dt)
 
     -- update all physics objects
     for _, obj in pairs(self.objects) do
+        -- suck objects in towards mouse
+        if(love.mouse.isDown(3)) then
+            local force_strength = 0.2
+            local mouse_world = CAMERA:to_world(love.mouse.getX(), love.mouse.getY())
+            local direction = {
+                x = mouse_world.x - obj.position.x,
+                y = mouse_world.y - obj.position.y
+            }
+            local direction_length = math.sqrt(math.pow(direction.x, 2) + math.pow(direction.y, 2))
+            direction.x = direction.x / direction_length
+            direction.y = direction.y / direction_length
+
+            obj:apply_force(direction.x * force_strength, direction.y * force_strength)
+        end
+
+        
         obj:step(dt)
     end
 end
