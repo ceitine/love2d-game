@@ -9,6 +9,7 @@ local mt = {
 -- variables
 scene.chunks = nil
 scene.flat_chunks = nil
+scene.physics_update = 0
 
 -- create new scene
 function scene:create(o)
@@ -169,24 +170,31 @@ function scene:update(dt)
         if(not spawned) then
             self.objects[#self.objects + 1] = spawnRect 
                 and physicsobj.new(COLLIDER_RECT, CAMERA.position, math.random(2, 5), math.random(1, 5), 0)
-                or physicsobj.new(COLLIDER_CIRCLE, CAMERA.position, math.random(1, 5))
+                or physicsobj.new(COLLIDER_CIRCLE, CAMERA.position, math.random(1, 15) / 5)
             spawned = true
         end
     else 
         spawned = false
     end
-    
+
     -- update all physics objects
-    for _, obj in pairs(self.objects) do
-        -- suck objects in towards mouse
-        if(love.mouse.isDown(3)) then
-            local force_strength = 0.2
-            local mouse_world = CAMERA:to_world(love.mouse.getX(), love.mouse.getY())
-            local direction = obj.position:direction(mouse_world)
-            obj:apply_force(direction.x * force_strength, direction.y * force_strength)
+    local time = 1 / PHYSICS_UPDATES
+    self.physics_update = self.physics_update + dt
+    
+    if(self.physics_update >= time) then
+        for _, obj in pairs(self.objects) do
+            -- suck objects in towards mouse
+            if(love.mouse.isDown(3)) then
+                local force_strength = 0.2
+                local mouse_world = CAMERA:to_world(love.mouse.getX(), love.mouse.getY())
+                local direction = obj.position:direction(mouse_world)
+                obj:apply_force(direction.x * force_strength, direction.y * force_strength)
+            end
+
+            obj:step(self.physics_update)
         end
 
-        obj:step(dt)
+        self.physics_update = 0
     end
 end
 

@@ -65,20 +65,6 @@ local function rotate_vector(x, y, px, py, angle)
            (x - px) * sin + (y - py) * cos + py
 end
 
-local function arithmetic_mean(points)
-    local sumX, sumY = 0, 0
-    local point_count = #points
-    for i = 1, point_count do
-        sumX = sumX + points[i].x
-        sumY = sumY + points[i].y
-    end
-
-    return vec2.new(
-        sumX / point_count,
-        sumY / point_count
-    )
-end
-
 local function project_vertices(vertices, axis)
     local min, max
     for _, point in pairs(vertices) do
@@ -293,7 +279,10 @@ function physicsobj:get_occupied_bounds()
     elseif(self.type == COLLIDER_CIRCLE) then
         -- find bounds by radius
         local minX, minY = self.position.x - self.shape.radius, self.position.y - self.shape.radius
+        minX, minY = math.min(minX, self.position.x - 1), math.min(minY, self.position.y - 1)
+        
         local maxX, maxY = self.position.x + self.shape.radius, self.position.y + self.shape.radius
+        maxX, maxY = math.max(maxX, self.position.x + 1), math.max(maxY, self.position.y + 1)
 
         return {
             minsX = math.floor(minX), minsY = math.floor(minY),
@@ -362,7 +351,7 @@ end
 function physicsobj:step(delta)
     -- apply gravity
     if(self.gravity) then
-        -- self:apply_velocity(self.gravity.x, self.gravity.y)
+        --self:apply_velocity(self.gravity.x, self.gravity.y)
     end
 
     -- apply physics
