@@ -83,8 +83,8 @@ end
 
 function vec2:normalize()
     local len = self:length()
-    local x = self.x / length
-    local y = self.y / length
+    local x = self.x / len
+    local y = self.y / len
     return vec2.new(x, y)
 end
 

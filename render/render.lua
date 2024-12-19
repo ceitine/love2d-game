@@ -42,8 +42,13 @@ function render.get_text_size(text, font)
 end
 
 function render.rectangle(x, y, w, h, col, mode)
-    render.setcol(col)
+    render.setcol(col or color.WHITE)
     love.graphics.rectangle(mode or "fill", x, y, w, h)
+end
+
+function render.circle(x, y, radius, col, mode)
+    render.setcol(col or color.WHITE)
+    love.graphics.circle(mode or "fill", x, y, radius)
 end
 
 function render.set_shader(shader)

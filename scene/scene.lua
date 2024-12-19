@@ -164,15 +164,18 @@ end
 local spawned = false
 function scene:update(dt)
     -- spawn some debug objects
-    if(love.keyboard.isDown("space")) then
+    local spawnCircle, spawnRect = love.keyboard.isDown("w"), love.keyboard.isDown("space")
+    if(spawnCircle or spawnRect) then
         if(not spawned) then
-            self.objects[#self.objects + 1] = physicsobj.new(COLLIDER_RECT, CAMERA.position, math.random(2, 5), math.random(1, 5), 0)
+            self.objects[#self.objects + 1] = spawnRect 
+                and physicsobj.new(COLLIDER_RECT, CAMERA.position, math.random(2, 5), math.random(1, 5), 0)
+                or physicsobj.new(COLLIDER_CIRCLE, CAMERA.position, math.random(1, 5))
             spawned = true
         end
     else 
         spawned = false
     end
-
+    
     -- update all physics objects
     for _, obj in pairs(self.objects) do
         -- suck objects in towards mouse

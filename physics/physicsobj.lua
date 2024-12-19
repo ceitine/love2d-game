@@ -41,6 +41,12 @@ function physicsobj.new(type, pos, ...)
             height = h,
             pivot = vec2.new(w / 2, h / 2)
         }
+    elseif(instance.type == COLLIDER_CIRCLE) then
+        local r = vargs[1] or 1
+        instance.shape = {
+            radius = r,
+            pivot = vec2.new(r / 2, r / 2)
+        }
     else
         error("Invalid collider type for PhysicsObj ".. type)
     end
@@ -73,9 +79,20 @@ local function arithmetic_mean(points)
     )
 end
 
-local function polygon_intersection(a, b)
+local function project_vertices(vertices, axis)
+    local min, max
+    for _, point in pairs(vertices) do
+        local projected = axis.x * point.x + axis.y * point.y
+        if(min == nil or projected < min) then min = projected end
+        if(max == nil or projected > max) then max = projected end
+    end
+
+    return min, max
+end
+
+local function polygon_intersection(centerA, centerB, a, b)
     local depth = math.huge
-    local direction = nil
+    local normal = vec2.ZERO
 
     for _, polygon in pairs({a, b}) do
         local points = #polygon
@@ -84,20 +101,11 @@ local function polygon_intersection(a, b)
             local p1 = polygon[i]
             local p2 = polygon[i2]
 
-            local normal = vec2.new(p2.y - p1.y, p2.x - p1.x)
-            local minA, maxA
-            for _, point in pairs(a) do
-                local projected = normal.x * point.x + normal.y * point.y
-                if(minA == nil or projected < minA) then minA = projected end
-                if(maxA == nil or projected > maxA) then maxA = projected end
-            end
+            local edge = vec2(p2.x - p1.x, p2.y - p1.y)
+            local axis = vec2(edge.y, edge.x)
 
-            local minB, maxB
-            for _, point in pairs(b) do
-                local projected = normal.x * point.x + normal.y * point.y
-                if(minB == nil or projected < minB) then minB = projected end
-                if(maxB == nil or projected > maxB) then maxB = projected end
-            end
+            local minA, maxA = project_vertices(a, axis)
+            local minB, maxB = project_vertices(b, axis)
 
             if(maxA < minB or maxB < minA) then
                 return false
@@ -106,33 +114,140 @@ local function polygon_intersection(a, b)
             local axis_depth = math.min(maxB - minA, maxA - minB)
             if(axis_depth < depth) then
                 depth = axis_depth
-                direction = normal:copy()
+                normal = axis:copy()
             end
         end
     end
 
     -- normalize values
-    local length = direction:length()
-    depth = depth / length -- ?
-    direction = direction / length
+    local length = normal:length()
+    depth = depth / length
+    normal = normal / length
 
     -- make sure normal is correct direction
-    local centerA = arithmetic_mean(a)
-    local centerB = arithmetic_mean(b)
     local center_direction = centerB - centerA
-
-    local dot_product = center_direction:dot(direction)
+    local dot_product = center_direction:dot(normal)
     if(dot_product < 0) then 
-        direction = 0 - direction -- flip direction
+        normal = 0 - normal -- flip direction
     end
 
     return {
         depth = depth,
-        normal = direction
+        normal = normal
     }
 end
 
--- instance functions
+local function project_circle(center, radius, axis)
+    local direction = axis:normalize()
+    local direction_r = direction * radius
+
+    local p1 = (center - 1) + direction_r
+    local p2 = (center - 1) - direction_r
+
+    local min, max = p1:dot(axis), p2:dot(axis)
+    if(min > max) then
+        local temp = max
+        max = min
+        min = temp
+    end
+
+    return min, max
+end
+
+local function circle_polygon_intersect(polygon_center, polygon, circle_center, circle_radius)
+    local depth = math.huge
+    local normal = vec2.ZERO
+    local axis
+
+    local min_distance = math.huge
+    local closest_index = 0
+
+    local minA, maxA, minB, maxB
+
+    local points = #polygon
+    for i = 1, points do
+        local i2 = i % points + 1
+        local p1 = polygon[i]
+        local p2 = polygon[i2]
+
+        local edge = vec2(p2.x - p1.x, p2.y - p1.y)
+        axis = vec2(edge.y, edge.x)
+
+        minA, maxA = project_vertices(polygon, axis)
+        minB, maxB = project_circle(circle_center, circle_radius, axis)
+
+        if(maxA < minB or maxB < minA) then
+            return false
+        end
+
+        local distance = circle_center:distance(p1)
+        if(distance < min_distance) then
+            min_distance = distance
+            closest_index = i
+        end
+
+        local axis_depth = math.min(maxB - minA, maxA - minB)
+        if(axis_depth < depth) then
+            depth = axis_depth
+            normal = axis:copy()
+        end
+    end
+
+    -- get closest point
+    local closest_point = polygon[closest_index]
+    axis = closest_point - circle_center
+
+    minA, maxA = project_vertices(polygon, axis)
+    minB, maxB = project_circle(circle_center, circle_radius, axis)
+
+    if(maxA < minB or maxB < minA) then
+        return false
+    end
+
+    local axis_depth = math.min(maxB - minA, maxA - minB)
+    if(depth == nil or axis_depth < depth) then
+        depth = axis_depth
+        normal = axis:copy()
+    end
+
+    -- normalize values
+    local len = normal:length()
+    depth = depth / len
+    normal = normal / len
+
+    -- make sure normal is correct direction
+    local center_direction = polygon_center - circle_center
+    local dot_product = center_direction:dot(normal)
+    if(dot_product < 0) then 
+        normal = 0 - normal -- flip direction
+    end
+
+    return {
+        depth = depth,
+        normal = normal
+    }
+end
+
+local function circle_intersect(centerA, radiusA, centerB, radiusB)
+    local distance = centerA:distance(centerB)
+    local radii = radiusA + radiusB
+    if(distance >= radii) then
+        return false
+    end
+
+    local normal = (centerA - centerB):normalize()
+    local depth = radii - distance
+    return {
+        depth = depth,
+        normal = normal
+    }
+end
+
+-- collision functions
+function physicsobj:get_center()
+    return self.position:copy()
+end
+
 function physicsobj:get_corners()
     local rad = self.rotation * math.pi / 180
 
@@ -147,24 +262,14 @@ function physicsobj:get_corners()
 
         for i, corner in pairs(corners) do
             local x, y = rotate_vector(corner.x, corner.y, self.shape.pivot.x, self.shape.pivot.y, rad)
-            corners[i].x = self.position.x - x + (self.shape.width - self.shape.pivot.x)
-            corners[i].y = self.position.y - y + (self.shape.height - self.shape.pivot.y) -- this doesn't account for rotation if pivoted, fix
+            x = self.position.x - x + (self.shape.width - self.shape.pivot.x)
+            y = self.position.y - y + (self.shape.height - self.shape.pivot.y) -- this doesn't account for rotation if pivoted, fix
+
+            corners[i] = vec2(x, y)
         end
 
         return corners
     end
-end
-
-function physicsobj:tile_collision(x, y)
-    local polygon = self:get_corners()
-    local tile_polygon = {
-        {x = x - 1, y = y - 1}, -- top-left
-        {x = x    , y = y - 1}, -- top-right
-        {x = x - 1, y = y    }, -- bottom-left
-        {x = x    , y = y    } -- bottom-right
-    }
-
-    return polygon_intersection(polygon, tile_polygon)
 end
 
 function physicsobj:get_occupied_bounds()
@@ -185,9 +290,59 @@ function physicsobj:get_occupied_bounds()
             minsX = math.floor(minX) + 1, minsY = math.floor(minY) + 1,
             maxsX = math.ceil(maxX), maxsY = math.ceil(maxY)
         }
+    elseif(self.type == COLLIDER_CIRCLE) then
+        -- find bounds by radius
+        local minX, minY = self.position.x - self.shape.radius, self.position.y - self.shape.radius
+        local maxX, maxY = self.position.x + self.shape.radius, self.position.y + self.shape.radius
+
+        return {
+            minsX = math.floor(minX), minsY = math.floor(minY),
+            maxsX = math.floor(maxX), maxsY = math.floor(maxY)
+        }
     end
 end
 
+function physicsobj:tile_collide(x, y)
+    local tile_polygon = {
+        vec2(x - 1, y - 1), -- top-left
+        vec2(x    , y - 1), -- top-right
+        vec2(x - 1, y    ), -- bottom-left
+        vec2(x    , y    ) -- bottom-right
+    }
+
+    local tile_center = vec2.new(x + 0.5, y + 0.5)
+
+    if(self.type == COLLIDER_RECT) then
+        return polygon_intersection(self:get_center(), tile_center, self:get_corners(), tile_polygon)
+
+    elseif(self.type == COLLIDER_CIRCLE) then
+        return circle_polygon_intersect(tile_center, tile_polygon, self:get_center(), self.shape.radius)
+    end
+end
+
+function physicsobj:collide(obj)
+    -- self is rect
+    if(self.type == COLLIDER_RECT) then
+
+        if(obj.type == COLLIDER_RECT) then
+            return polygon_intersection(self:get_center(), obj:get_center(), self:get_corners(), obj:get_corners())
+        elseif(obj.type == COLLIDER_CIRCLE) then
+            return circle_polygon_intersect(self:get_center(), self:get_corners(), obj:get_center(), obj.shape.radius)
+        end
+
+    -- self is circle
+    elseif(self.type == COLLIDER_CIRCLE) then
+
+        if(obj.type == COLLIDER_RECT) then
+            return circle_polygon_intersect(obj:get_center(), obj:get_corners(), self:get_center(), self.shape.radius)
+        elseif(obj.type == COLLIDER_CIRCLE) then
+            return circle_intersect(self:get_center(), self.shape.radius, obj:get_center(), obj.shape.radius)
+        end
+
+    end
+end
+
+-- helper functions
 function physicsobj:apply_velocity(x, y)
     self.velocity = self.velocity + vec2.new(x, y)
 end
@@ -217,22 +372,29 @@ function physicsobj:step(delta)
     self:apply_force(0, 0)
 
     -- resolve collisions
-    if(self.type == COLLIDER_RECT) then
-        
-        local bounds = self:get_occupied_bounds()
-        for x = bounds.minsX, bounds.maxsX do
-            for y = bounds.minsY, bounds.maxsY do
-                
-                if(self.scene:query_pos(x, y).tile ~= nil) then
-                    collision = self:tile_collision(x, y)
-                    if(collision) then         
-                        self:move(-collision.normal.x * collision.depth, -collision.normal.y * collision.depth)               
-                    end
-                end
-
+    for _, other in pairs(self.scene.objects) do
+        if(other ~= self) then
+            collision = self:collide(other)
+            if(collision) then
+                self:move(collision.normal.x * collision.depth / 2, collision.normal.y * collision.depth / 2)           
+                other:move(-collision.normal.x * collision.depth / 2, -collision.normal.y * collision.depth / 2)  
             end
         end
+    end
 
+    -- tilemap collisions
+    local bounds = self:get_occupied_bounds()
+    for x = bounds.minsX, bounds.maxsX do
+        for y = bounds.minsY, bounds.maxsY do
+            
+            if(self.scene:query_pos(x, y).tile ~= nil) then
+                collision = self:tile_collide(x, y)
+                if(collision) then         
+                    self:move(-collision.normal.x * collision.depth, -collision.normal.y * collision.depth)               
+                end
+            end
+
+        end
     end
 end
 

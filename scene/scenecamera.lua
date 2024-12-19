@@ -101,6 +101,7 @@ function scenecamera:render()
             obj.position.y - obj.shape.pivot.y
         )
 
+        -- collider
         if(obj.type == COLLIDER_RECT) then
             love.graphics.push()
                 love.graphics.translate(screen_pos.x + self.scale, screen_pos.y + self.scale)
@@ -114,33 +115,45 @@ function scenecamera:render()
                     color.WHITE, "line"
                 )
             love.graphics.pop()
+        elseif(obj.type == COLLIDER_CIRCLE) then
+            local radius = obj.shape.radius * self.scale
+            love.graphics.push()
+                love.graphics.translate(screen_pos.x + radius / 2, screen_pos.y + radius / 2)
 
-            local bounds = obj:get_occupied_bounds()
-            local collision
-            for x = bounds.minsX, bounds.maxsX do
-                for y = bounds.minsY, bounds.maxsY do
-                    local col = color.GREEN
-                    if(self.scene:query_pos(x, y).tile ~= nil) then
-                        col = color.RED
-                        if(obj:tile_collision(x, y)) then
-                            col = color.BLUE
-                        end
-                    end
-
-                    local screen_pos = self:to_screen(
-                        math.floor(x),
-                        math.floor(y)
-                    )
-                    
-                    render.rectangle(
-                        screen_pos.x, screen_pos.y,
-                        self.scale, self.scale, 
-                        col:with_alpha(80)
-                    )
-                end
-            end
-           
+                render.circle(
+                    0, 0,
+                    radius, 
+                    color.WHITE, "line"
+                )
+            love.graphics.pop()    
         end
+
+        -- occupied bounds
+        local bounds = obj:get_occupied_bounds()
+        local collision
+        for x = bounds.minsX, bounds.maxsX do
+            for y = bounds.minsY, bounds.maxsY do
+                local col = color.GREEN
+                if(self.scene:query_pos(x, y).tile ~= nil) then
+                    col = color.RED
+                    if(obj:tile_collide(x, y)) then
+                        col = color.BLUE
+                    end
+                end
+
+                local screen_pos = self:to_screen(
+                    math.floor(x),
+                    math.floor(y)
+                )
+                
+                render.rectangle(
+                    screen_pos.x, screen_pos.y,
+                    self.scale, self.scale, 
+                    col:with_alpha(80)
+                )
+            end
+        end
+
     end
 end
 
