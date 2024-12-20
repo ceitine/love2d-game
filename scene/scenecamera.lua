@@ -59,23 +59,23 @@ function scenecamera:render()
     local to = self:to_world(endX, endY)
     local raycast = self.scene:raycast(from, to, true)
     for _, pos in pairs(raycast.path) do 
-        local world_pos = self:to_screen(
+        local screen_pos = self:to_screen(
             math.floor(pos.x), 
             math.floor(pos.y)
         )
 
-        render.rectangle(world_pos.x, world_pos.y, self.scale, self.scale, color.GREEN)
+        render.rectangle(screen_pos.x, screen_pos.y, self.scale, self.scale, color.GREEN)
     end
 
     if(raycast.hit) then
-        local world_pos = self:to_screen(
+        local screen_pos = self:to_screen(
             math.floor(raycast.position.x), 
             math.floor(raycast.position.y)
         )
 
-        render.rectangle(world_pos.x, world_pos.y, self.scale, self.scale, color.WHITE)
+        render.rectangle(screen_pos.x, screen_pos.y, self.scale, self.scale, color.WHITE)
 
-        local from_normal = world_pos + self.scale / 2 + raycast.normal * self.scale / 2
+        local from_normal = screen_pos + self.scale / 2 + raycast.normal * self.scale / 2
         local to_normal = from_normal + raycast.normal * self.scale / 2
         render.line(from_normal.x, from_normal.y, to_normal.x, to_normal.y, color.BLUE)
 
@@ -123,6 +123,7 @@ function scenecamera:render()
             local radius = obj.shape.radius * self.scale
             love.graphics.push()
                 love.graphics.translate(screen_pos.x + radius / 2, screen_pos.y + radius / 2)
+                love.graphics.rotate(obj.rotation * math.pi / 180)
 
                 render.circle(
                     0, 0,

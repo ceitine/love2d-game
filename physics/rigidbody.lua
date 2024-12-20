@@ -349,17 +349,6 @@ function rigidbody:rotate(deg)
 end
 
 function rigidbody:step(delta)
-    -- apply gravity
-    if(self.gravity) then
-        --self:apply_velocity(self.gravity.x, self.gravity.y)
-    end
-
-    -- apply physics
-    self:apply_velocity(self.force.x, self.force.y)
-    self:move(self.velocity.x * delta, self.velocity.y * delta)
-    self:rotate(self.rotational_velocity * delta)
-    self:apply_force(0, 0)
-
     -- resolve collisions
     for _, other in pairs(self.scene.objects) do
         if(other ~= self) then
@@ -385,6 +374,17 @@ function rigidbody:step(delta)
 
         end
     end
+
+    -- apply gravity
+    if(self.gravity) then
+        --self:apply_velocity(self.gravity.x, self.gravity.y)
+    end
+
+    -- apply physics
+    self:apply_velocity(self.force.x, self.force.y)
+    self:move(self.velocity.x * delta, self.velocity.y * delta)
+    self:rotate(self.rotational_velocity * delta)
+    self:apply_force(0, 0)
 end
 
 return rigidbody

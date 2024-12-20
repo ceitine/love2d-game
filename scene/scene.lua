@@ -165,7 +165,7 @@ end
 local spawned = false
 function scene:update(dt)
     -- spawn some debug objects
-    local spawnCircle, spawnRect = love.keyboard.isDown("w"), love.keyboard.isDown("space")
+    local spawnCircle, spawnRect = love.keyboard.isDown("e"), love.keyboard.isDown("q")
     if(spawnCircle or spawnRect) then
         if(not spawned) then
             self.objects[#self.objects + 1] = spawnRect 

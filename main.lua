@@ -88,6 +88,27 @@ hook.register("scene_update", "update", function(dt)
         camera_settings.target.y = camera_settings.drag.old.y * scale + dy * scale
     else
         camera_settings.drag = nil
+
+        local speed = 10.5
+        local wishX = love.keyboard.isDown("d") 
+            and 1
+            or love.keyboard.isDown("a") 
+                and -1
+                or 0
+
+        local wishY = love.keyboard.isDown("w") 
+            and -1
+            or love.keyboard.isDown("s") 
+                and 1
+                or 0
+
+        if(wishX ~= 0) then
+            camera_settings.target.x = camera_settings.target.x + wishX * dt * speed
+        end
+
+        if(wishY ~= 0) then
+            camera_settings.target.y = camera_settings.target.y + wishY * dt * speed
+        end
     end
 end)
 
