@@ -42,7 +42,7 @@ end
 -- instance functions
 function scene:query_pos(x, y) -- this is in tile space!
     local result = {}
-    result.position = vec2.new(
+    result.position = vec2(
         math.floor((x - 1) / chunk.WIDTH),
         math.floor((y - 1) / chunk.HEIGHT)
     )
@@ -50,7 +50,7 @@ function scene:query_pos(x, y) -- this is in tile space!
     local chunk_row = self.chunks[result.position.x]
     result.chunk = chunk_row and chunk_row[result.position.y]
 
-    result.tile_position = vec2.new(
+    result.tile_position = vec2(
         (math.floor(x - 1) % chunk.WIDTH + chunk.WIDTH) % chunk.WIDTH + 1,
         (math.floor(y - 1) % chunk.HEIGHT + chunk.HEIGHT) % chunk.HEIGHT + 1
     )
@@ -115,7 +115,7 @@ function scene:raycast(from, to, capture_path) -- this is in tile space!
             result.chunk = query.chunk
             result.tile = query.tile
             result.tile_position = query.tile_position
-            result.hit_position = vec2.new(dirX * dist_travelled + from.x, dirY * dist_travelled + from.y)
+            result.hit_position = vec2(dirX * dist_travelled + from.x, dirY * dist_travelled + from.y)
             result.hit = true
             return result
         end
@@ -125,12 +125,12 @@ function scene:raycast(from, to, capture_path) -- this is in tile space!
             result.position.x = result.position.x + stepX
             dist_travelled = tMaxX
             tMaxX = tMaxX + tDeltaX
-            result.normal = vec2.new(-math.floor(stepX), 0)
+            result.normal = vec2(-math.floor(stepX), 0)
         else
             result.position.y = result.position.y + stepY
             dist_travelled = tMaxY
             tMaxY = tMaxY + tDeltaY
-            result.normal = vec2.new(0, -math.floor(stepY))
+            result.normal = vec2(0, -math.floor(stepY))
         end
 
         -- capture path

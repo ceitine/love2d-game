@@ -31,7 +31,7 @@ function rigidbody.new(type, pos, ...)
     instance.rotation = vargs[3] or 0
     instance.velocity = vec2.ZERO:copy()
     instance.rotational_velocity = 0
-    instance.gravity = vec2.new(0, 3)
+    instance.gravity = vec2(0, 3)
     instance.force = vec2.ZERO:copy()
     if(instance.type == COLLIDER_RECT) then
         local w = vargs[1] or 1
@@ -39,13 +39,13 @@ function rigidbody.new(type, pos, ...)
         instance.shape = {
             width = w,
             height = h,
-            pivot = vec2.new(w / 2, h / 2)
+            pivot = vec2(w / 2, h / 2)
         }
     elseif(instance.type == COLLIDER_CIRCLE) then
         local r = vargs[1] or 1
         instance.shape = {
             radius = r,
-            pivot = vec2.new(r / 2, r / 2)
+            pivot = vec2(r / 2, r / 2)
         }
     else
         error("Invalid collider type for rigidbody ".. type)
@@ -180,7 +180,7 @@ local function circle_polygon_intersect(polygon_center, polygon, circle_center, 
     end
 
     -- get closest point
-    local closest_point = polygon[closest_index]
+    local closest_point = polygon[closest_index] or polygon_center
     axis = closest_point - circle_center
 
     minA, maxA = project_vertices(polygon, axis)
@@ -299,7 +299,7 @@ function rigidbody:tile_collide(x, y)
         vec2(x    , y    ) -- bottom-right
     }
 
-    local tile_center = vec2.new(x + 0.5, y + 0.5)
+    local tile_center = vec2(x + 0.5, y + 0.5)
 
     if(self.type == COLLIDER_RECT) then
         return polygon_intersection(self:get_center(), tile_center, self:get_corners(), tile_polygon)
@@ -333,15 +333,15 @@ end
 
 -- helper functions
 function rigidbody:apply_velocity(x, y)
-    self.velocity = self.velocity + vec2.new(x, y)
+    self.velocity = self.velocity + vec2(x, y)
 end
 
 function rigidbody:apply_force(x, y)
-    self.force = vec2.new(x, y)
+    self.force = vec2(x, y)
 end
 
 function rigidbody:move(x, y)
-    self.position = self.position + vec2.new(x, y)
+    self.position = self.position + vec2(x, y)
 end
 
 function rigidbody:rotate(deg)

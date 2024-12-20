@@ -27,14 +27,14 @@ end
 
 -- instance functions
 function scenecamera:to_screen(x, y)
-    return vec2.new(
+    return vec2(
        (x - 1) * self.scale - self.position.x * self.scale + love.graphics.getWidth() / 2, 
        (y - 1) * self.scale - self.position.y * self.scale + love.graphics.getHeight() / 2
     )
 end
 
 function scenecamera:to_world(x, y)
-    return vec2.new( 
+    return vec2( 
         (x - love.graphics.getWidth() / 2 + self.position.x * self.scale) / self.scale + 1, 
         (y - love.graphics.getHeight() / 2 + self.position.y * self.scale) / self.scale + 1
     )
