@@ -136,9 +136,10 @@ function chunk.new(x, y, scene)
 
     for x = 1, WIDTH do
         for y = 1, HEIGHT do
-            local n = mathx.random(0, 1)
-            if(n ~= 2) then
-                instance:set_tile(tile.new(n), x, y)
+            local noise = love.math.noise(x / WIDTH + instance.x, y / HEIGHT + instance.y)
+            if(noise < 0.3) then 
+                local index = noise > 0.1 and 1 or 0
+                instance:set_tile(tile.new(index), x, y)
             end
         end
     end

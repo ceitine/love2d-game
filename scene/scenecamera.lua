@@ -75,6 +75,10 @@ function scenecamera:render()
 
         render.rectangle(world_pos.x, world_pos.y, self.scale, self.scale, color.WHITE)
 
+        local from_normal = world_pos + self.scale / 2 + raycast.normal * self.scale / 2
+        local to_normal = from_normal + raycast.normal * self.scale / 2
+        render.line(from_normal.x, from_normal.y, to_normal.x, to_normal.y, color.BLUE)
+
         local hit_pos = self:to_screen(
             raycast.hit_position.x,
             raycast.hit_position.y

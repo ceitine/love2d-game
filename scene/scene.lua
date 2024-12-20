@@ -1,5 +1,5 @@
 local chunk = require("render/chunk")
-local physicsobj = require("physics/physicsobj")
+local rigidbody = require("physics/rigidbody")
 local scene = {}
 local mt = {
     -- index data
@@ -169,8 +169,8 @@ function scene:update(dt)
     if(spawnCircle or spawnRect) then
         if(not spawned) then
             self.objects[#self.objects + 1] = spawnRect 
-                and physicsobj.new(COLLIDER_RECT, CAMERA.position, math.random(2, 5), math.random(1, 5), 0)
-                or physicsobj.new(COLLIDER_CIRCLE, CAMERA.position, math.random(1, 15) / 5)
+                and rigidbody.new(COLLIDER_RECT, CAMERA.position, math.random(2, 5), math.random(1, 5), 0)
+                or rigidbody.new(COLLIDER_CIRCLE, CAMERA.position, math.random(1, 15) / 5)
             spawned = true
         end
     else 

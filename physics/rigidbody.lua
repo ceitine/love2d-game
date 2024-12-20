@@ -1,31 +1,31 @@
-local physicsobj = {}
+local rigidbody = {}
 local mt = {
     -- index data
-    __index = physicsobj,
+    __index = rigidbody,
 }
 
 -- variables
 COLLIDER_RECT = "rect"
 COLLIDER_CIRCLE = "circle"
 
-physicsobj.scene = nil
-physicsobj.type = nil
-physicsobj.position = nil
-physicsobj.rotation = 0
-physicsobj.velocity = nil
-physicsobj.gravity = nil
+rigidbody.scene = nil
+rigidbody.type = nil
+rigidbody.position = nil
+rigidbody.rotation = 0
+rigidbody.velocity = nil
+rigidbody.gravity = nil
 
--- create new physicsobj
-function physicsobj:create(o)
+-- create new rigidbody
+function rigidbody:create(o)
     local instance = o or {}
     setmetatable(instance, mt)
     self.__index = instance
     return instance
 end
 
-function physicsobj.new(type, pos, ...)
+function rigidbody.new(type, pos, ...)
     local vargs = {...}
-    local instance = physicsobj:create()
+    local instance = rigidbody:create()
     instance.type = type or COLLIDER_RECT
     instance.position = (pos or vec2.ZERO):copy()
     instance.rotation = vargs[3] or 0
@@ -48,7 +48,7 @@ function physicsobj.new(type, pos, ...)
             pivot = vec2.new(r / 2, r / 2)
         }
     else
-        error("Invalid collider type for PhysicsObj ".. type)
+        error("Invalid collider type for rigidbody ".. type)
     end
 
     instance.scene = SCENE
@@ -230,11 +230,11 @@ local function circle_intersect(centerA, radiusA, centerB, radiusB)
 end
 
 -- collision functions
-function physicsobj:get_center()
+function rigidbody:get_center()
     return self.position:copy()
 end
 
-function physicsobj:get_corners()
+function rigidbody:get_corners()
     local rad = self.rotation * math.pi / 180
 
     if(self.type == COLLIDER_RECT) then
@@ -258,7 +258,7 @@ function physicsobj:get_corners()
     end
 end
 
-function physicsobj:get_occupied_bounds()
+function rigidbody:get_occupied_bounds()
     if(self.type == COLLIDER_RECT) then
         -- find all corners of rectangle
         local corners = self:get_corners()
@@ -291,7 +291,7 @@ function physicsobj:get_occupied_bounds()
     end
 end
 
-function physicsobj:tile_collide(x, y)
+function rigidbody:tile_collide(x, y)
     local tile_polygon = {
         vec2(x - 1, y - 1), -- top-left
         vec2(x    , y - 1), -- top-right
@@ -309,7 +309,7 @@ function physicsobj:tile_collide(x, y)
     end
 end
 
-function physicsobj:collide(obj)
+function rigidbody:collide(obj)
     -- self is rect
     if(self.type == COLLIDER_RECT) then
 
@@ -332,23 +332,23 @@ function physicsobj:collide(obj)
 end
 
 -- helper functions
-function physicsobj:apply_velocity(x, y)
+function rigidbody:apply_velocity(x, y)
     self.velocity = self.velocity + vec2.new(x, y)
 end
 
-function physicsobj:apply_force(x, y)
+function rigidbody:apply_force(x, y)
     self.force = vec2.new(x, y)
 end
 
-function physicsobj:move(x, y)
+function rigidbody:move(x, y)
     self.position = self.position + vec2.new(x, y)
 end
 
-function physicsobj:rotate(deg)
+function rigidbody:rotate(deg)
     self.rotation = self.rotation + deg
 end
 
-function physicsobj:step(delta)
+function rigidbody:step(delta)
     -- apply gravity
     if(self.gravity) then
         --self:apply_velocity(self.gravity.x, self.gravity.y)
@@ -387,4 +387,4 @@ function physicsobj:step(delta)
     end
 end
 
-return physicsobj
+return rigidbody
