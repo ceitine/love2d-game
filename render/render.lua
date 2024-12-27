@@ -13,7 +13,7 @@ function render.line(x1, y1, x2, y2, col)
     love.graphics.line(x1, y1, x2, y2)
 end
 
-function render.string(text, x, y, col, scale, rotation)
+function render.string(text, x, y, col, scale, rotation, align_horizontal, align_vertical)
     -- null check some variables
     col = col or color.WHITE
     scale = scale or 1
@@ -22,7 +22,7 @@ function render.string(text, x, y, col, scale, rotation)
 
     -- draw
     render.setcol(col)
-    local origin = align.calc_text(text, render.DEFAULT_FONT, ALIGN.HORIZONTAL.CENTER, ALIGN.VERTICAL.MIDDLE)
+    local origin = align.calc_text(text, render.DEFAULT_FONT, align_horizontal or ALIGN.HORIZONTAL.CENTER, align_vertical or ALIGN.VERTICAL.MIDDLE)
     love.graphics.print(
         text, 
         x + origin.x, y + origin.y, 

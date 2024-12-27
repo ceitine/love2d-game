@@ -89,7 +89,7 @@ hook.register("scene_update", "update", function(dt)
     else
         camera_settings.drag = nil
 
-        local speed = 10.5
+        local speed = 15
         local wishX = love.keyboard.isDown("d") 
             and 1
             or love.keyboard.isDown("a") 

@@ -107,6 +107,19 @@ function scenecamera:render()
 
         -- collider
         if(obj.type == COLLIDER_RECT) then
+            for _, point in pairs(obj:get_corners()) do -- render corners
+                local screen_pos = self:to_screen(
+                    point.x + 1,
+                    point.y + 1
+                )
+
+                render.rectangle(
+                    screen_pos.x - 2, screen_pos.y - 2,
+                    4, 4,
+                    color.WHITE
+                )
+            end
+
             love.graphics.push()
                 love.graphics.translate(screen_pos.x + self.scale, screen_pos.y + self.scale)
                 love.graphics.translate(obj.shape.pivot.x * self.scale, obj.shape.pivot.y * self.scale)
@@ -118,11 +131,13 @@ function scenecamera:render()
                     obj.shape.width * self.scale, obj.shape.height * self.scale, 
                     color.WHITE, "line"
                 )
+
+                render.string(tostring(obj.shape.width).. "x".. tostring(obj.shape.height), self.scale * 0.2, self.scale * 0.2, color.WHITE, self.scale * 0.02, 0, ALIGN.HORIZONTAL.LEFT, ALIGN.VERTICAL.TOP)
             love.graphics.pop()
         elseif(obj.type == COLLIDER_CIRCLE) then
-            local radius = obj.shape.radius * self.scale
+            local radius = obj.shape.radius * self.scale 
             love.graphics.push()
-                love.graphics.translate(screen_pos.x + radius / 2, screen_pos.y + radius / 2)
+                love.graphics.translate(screen_pos.x + radius / 2 + self.scale, screen_pos.y + radius / 2 + self.scale)
                 love.graphics.rotate(obj.rotation * math.pi / 180)
 
                 render.circle(

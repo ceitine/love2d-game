@@ -51,8 +51,9 @@ function vec2.mul(left, right)
 end
 
 function vec2.div(left, right)
+    local epsilon = 0.0001
     local left, right = validate_args(left, right)
-    return vec2.new(left.x / right.x, left.y / right.y)
+    return vec2.new(left.x / math.max(right.x, epsilon), left.y / math.max(right.y, epsilon))
 end
 
 -- helpers

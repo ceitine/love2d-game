@@ -5,15 +5,22 @@ local mt = {
 }
 
 -- variables
-COLLIDER_RECT = "rect"
-COLLIDER_CIRCLE = "circle"
+COLLIDER_RECT = 0
+COLLIDER_CIRCLE = 1
 
-rigidbody.scene = nil
-rigidbody.type = nil
-rigidbody.position = nil
-rigidbody.rotation = 0
-rigidbody.velocity = nil
-rigidbody.gravity = nil
+MOVETYPE_DYNAMIC = 0
+MOVETYPE_STATIC = 1
+
+MIN_DENSITY = 0.5  -- g/cm^3
+MAX_DENSITY = 21.4 -- 
+
+RB_FLAGS_LOCK_ROTATION = 0
+RB_FLAGS_GRAVITY = 1
+
+RB_DEFAULT_FLAGS = {
+    [RB_FLAGS_LOCK_ROTATION] = false,
+    [RB_FLAGS_GRAVITY] = true
+}
 
 -- create new rigidbody
 function rigidbody:create(o)
@@ -27,12 +34,25 @@ function rigidbody.new(type, pos, ...)
     local vargs = {...}
     local instance = rigidbody:create()
     instance.type = type or COLLIDER_RECT
+
+    instance.flags = {}
+    for n, v in pairs(RB_DEFAULT_FLAGS) do
+        instance.flags[n] = v
+    end
+
     instance.position = (pos or vec2.ZERO):copy()
     instance.rotation = vargs[3] or 0
+    
     instance.velocity = vec2.ZERO:copy()
     instance.rotational_velocity = 0
     instance.gravity = vec2(0, 3)
     instance.force = vec2.ZERO:copy()
+    
+    instance.restitution = 0.5
+    instance.move_type = vargs[4] or MOVETYPE_DYNAMIC
+    instance.mass = vargs[5] or 1
+    instance.density = mathx.clamp(vargs[6] or 1, MIN_DENSITY, MAX_DENSITY)
+
     if(instance.type == COLLIDER_RECT) then
         local w = vargs[1] or 1
         local h = vargs[2] or 1
@@ -54,6 +74,14 @@ function rigidbody.new(type, pos, ...)
     instance.scene = SCENE
 
     return instance
+end
+
+function rigidbody.circle(position, rotation, radius, move_type, mass, density)
+    return rigidbody.new(COLLIDER_CIRCLE, position, radius, nil, rotation, move_type, mass, density)
+end
+
+function rigidbody.rectangle(position, rotation, width, height, move_type, mass, density)
+    return rigidbody.new(COLLIDER_RECT, position, width, height, rotation, move_type, mass, density)
 end
 
 -- helpers
@@ -83,12 +111,11 @@ local function polygon_intersection(centerA, centerB, a, b)
     for _, polygon in pairs({a, b}) do
         local points = #polygon
         for i = 1, points do
-            local i2 = i % points + 1
             local p1 = polygon[i]
-            local p2 = polygon[i2]
+            local p2 = polygon[math.max((i + 1) % points, 1)]
 
-            local edge = vec2(p2.x - p1.x, p2.y - p1.y)
-            local axis = vec2(edge.y, edge.x)
+            local edge = p2 - p1
+            local axis = vec2(edge.y, edge.x):normalize()
 
             local minA, maxA = project_vertices(a, axis)
             local minB, maxB = project_vertices(b, axis)
@@ -104,11 +131,6 @@ local function polygon_intersection(centerA, centerB, a, b)
             end
         end
     end
-
-    -- normalize values
-    local length = normal:length()
-    depth = depth / length
-    normal = normal / length
 
     -- make sure normal is correct direction
     local center_direction = centerB - centerA
@@ -127,8 +149,8 @@ local function project_circle(center, radius, axis)
     local direction = axis:normalize()
     local direction_r = direction * radius
 
-    local p1 = (center - 1) + direction_r
-    local p2 = (center - 1) - direction_r
+    local p1 = center + direction_r
+    local p2 = center - direction_r
 
     local min, max = p1:dot(axis), p2:dot(axis)
     if(min > max) then
@@ -152,12 +174,11 @@ local function circle_polygon_intersect(polygon_center, polygon, circle_center, 
 
     local points = #polygon
     for i = 1, points do
-        local i2 = i % points + 1
         local p1 = polygon[i]
-        local p2 = polygon[i2]
+        local p2 = polygon[math.max((i + 1) % points, 1)]
 
-        local edge = vec2(p2.x - p1.x, p2.y - p1.y)
-        axis = vec2(edge.y, edge.x)
+        local edge = p2 - p1
+        axis = vec2(edge.y, edge.x):normalize()
 
         minA, maxA = project_vertices(polygon, axis)
         minB, maxB = project_circle(circle_center, circle_radius, axis)
@@ -181,7 +202,7 @@ local function circle_polygon_intersect(polygon_center, polygon, circle_center, 
 
     -- get closest point
     local closest_point = polygon[closest_index] or polygon_center
-    axis = closest_point - circle_center
+    axis = (closest_point - circle_center):normalize()
 
     minA, maxA = project_vertices(polygon, axis)
     minB, maxB = project_circle(circle_center, circle_radius, axis)
@@ -191,15 +212,10 @@ local function circle_polygon_intersect(polygon_center, polygon, circle_center, 
     end
 
     local axis_depth = math.min(maxB - minA, maxA - minB)
-    if(depth == nil or axis_depth < depth) then
+    if(axis_depth < depth) then
         depth = axis_depth
         normal = axis:copy()
     end
-
-    -- normalize values
-    local len = normal:length()
-    depth = depth / len
-    normal = normal / len
 
     -- make sure normal is correct direction
     local center_direction = polygon_center - circle_center
@@ -221,7 +237,7 @@ local function circle_intersect(centerA, radiusA, centerB, radiusB)
         return false
     end
 
-    local normal = (centerA - centerB):normalize()
+    local normal = (centerB - centerA):normalize()
     local depth = radii - distance
     return {
         depth = depth,
@@ -230,11 +246,12 @@ local function circle_intersect(centerA, radiusA, centerB, radiusB)
 end
 
 -- collision functions
-function rigidbody:get_center()
+function rigidbody:get_center(local_space)
+    if(local_space) then return vec2.ZERO:copy() end
     return self.position:copy()
 end
 
-function rigidbody:get_corners()
+function rigidbody:get_corners(local_space) -- rectangle x-axis corners are too big?
     local rad = self.rotation * math.pi / 180
 
     if(self.type == COLLIDER_RECT) then
@@ -248,9 +265,12 @@ function rigidbody:get_corners()
 
         for i, corner in pairs(corners) do
             local x, y = rotate_vector(corner.x, corner.y, self.shape.pivot.x, self.shape.pivot.y, rad)
-            x = self.position.x - x + (self.shape.width - self.shape.pivot.x)
-            y = self.position.y - y + (self.shape.height - self.shape.pivot.y) -- this doesn't account for rotation if pivoted, fix
-
+            
+            if(not local_space) then
+                x = self.position.x - x + (self.shape.width - self.shape.pivot.x)
+                y = self.position.y - y + (self.shape.height - self.shape.pivot.y) -- this doesn't account for rotation if pivoted, fix
+            end
+            
             corners[i] = vec2(x, y)
         end
 
@@ -273,8 +293,8 @@ function rigidbody:get_occupied_bounds()
         maxX, maxY = math.max(maxX, corners[4].x), math.max(maxY, corners[4].y)
 
         return {
-            minsX = math.floor(minX) + 1, minsY = math.floor(minY) + 1,
-            maxsX = math.ceil(maxX), maxsY = math.ceil(maxY)
+            minsX = math.floor(minX), minsY = math.floor(minY),
+            maxsX = math.ceil(maxX + 0.5), maxsY = math.ceil(maxY + 0.5)
         }
     elseif(self.type == COLLIDER_CIRCLE) then
         -- find bounds by radius
@@ -285,8 +305,8 @@ function rigidbody:get_occupied_bounds()
         maxX, maxY = math.max(maxX, self.position.x + 1), math.max(maxY, self.position.y + 1)
 
         return {
-            minsX = math.floor(minX), minsY = math.floor(minY),
-            maxsX = math.floor(maxX), maxsY = math.floor(maxY)
+            minsX = math.floor(minX) + 1, minsY = math.floor(minY) + 1,
+            maxsX = math.ceil(maxX), maxsY = math.ceil(maxY)
         }
     end
 end
@@ -310,25 +330,60 @@ function rigidbody:tile_collide(x, y)
 end
 
 function rigidbody:collide(obj)
+    local result
+
     -- self is rect
     if(self.type == COLLIDER_RECT) then
 
         if(obj.type == COLLIDER_RECT) then
-            return polygon_intersection(self:get_center(), obj:get_center(), self:get_corners(), obj:get_corners())
-        elseif(obj.type == COLLIDER_CIRCLE) then
-            return circle_polygon_intersect(self:get_center(), self:get_corners(), obj:get_center(), obj.shape.radius)
+            result = polygon_intersection(self:get_center(), obj:get_center(), self:get_corners(), obj:get_corners())
+        elseif(obj.type == COLLIDER_CIRCLE) then -- THIS ONE NEEDS REVERSED NORMAL
+            result = circle_polygon_intersect(self:get_center(), self:get_corners(), obj:get_center(), obj.shape.radius)
+            if(result) then
+                result.normal = 0 - result.normal
+            end
         end
 
     -- self is circle
     elseif(self.type == COLLIDER_CIRCLE) then
 
         if(obj.type == COLLIDER_RECT) then
-            return circle_polygon_intersect(obj:get_center(), obj:get_corners(), self:get_center(), self.shape.radius)
+            result = circle_polygon_intersect(obj:get_center(), obj:get_corners(), self:get_center(), self.shape.radius)
         elseif(obj.type == COLLIDER_CIRCLE) then
-            return circle_intersect(self:get_center(), self.shape.radius, obj:get_center(), obj.shape.radius)
+            result = circle_intersect(self:get_center(), self.shape.radius, obj:get_center(), obj.shape.radius)
         end
 
     end
+
+    return result
+end
+
+function rigidbody:resolve_collision(collision, other)
+    if(not collision) then return end
+    
+    local other_velocity = (other and other.move_type == MOVETYPE_DYNAMIC) 
+        and other.velocity 
+        or 0
+
+    local relative_velocity = other_velocity - self.velocity
+    local e = math.min(self.restitution, other and other.restitution or 0)
+    local j = -(1 + e) * relative_velocity:dot(collision.normal)
+    j = j / (1 / self.mass) + (1 / (other and other.mass or 1))
+
+    self.velocity = self.velocity - (j / self.mass * collision.normal)
+    if(other) then
+        other.velocity = other.velocity + (j / other.mass * collision.normal)
+    end
+end
+
+function rigidbody:set_flag(key, value)
+    if(RB_DEFAULT_FLAGS[key] == nil) then return end
+    self.flags[key] = value
+end
+
+function rigidbody:get_flag(key)
+    if(not self.flags[key]) then return false end
+    return true
 end
 
 -- helper functions
@@ -345,46 +400,31 @@ function rigidbody:move(x, y)
 end
 
 function rigidbody:rotate(deg)
+    if(self:get_flag(RB_FLAGS_LOCK_ROTATION)) then return end
     self.rotation = self.rotation + deg
 end
 
 function rigidbody:step(delta)
-    -- resolve collisions
-    for _, other in pairs(self.scene.objects) do
-        if(other ~= self) then
-            collision = self:collide(other)
-            if(collision) then
-                self:move(collision.normal.x * collision.depth / 2, collision.normal.y * collision.depth / 2)           
-                other:move(-collision.normal.x * collision.depth / 2, -collision.normal.y * collision.depth / 2)  
-            end
-        end
-    end
-
-    -- tilemap collisions
-    local bounds = self:get_occupied_bounds()
-    for x = bounds.minsX, bounds.maxsX do
-        for y = bounds.minsY, bounds.maxsY do
-            
-            if(self.scene:query_pos(x, y).tile ~= nil) then
-                collision = self:tile_collide(x, y)
-                if(collision) then         
-                    self:move(-collision.normal.x * collision.depth, -collision.normal.y * collision.depth)               
-                end
-            end
-
-        end
-    end
-
     -- apply gravity
-    if(self.gravity) then
+    if(self.gravity and self:get_flag(RB_FLAGS_GRAVITY)) then
         --self:apply_velocity(self.gravity.x, self.gravity.y)
     end
 
     -- apply physics
-    self:apply_velocity(self.force.x, self.force.y)
-    self:move(self.velocity.x * delta, self.velocity.y * delta)
-    self:rotate(self.rotational_velocity * delta)
-    self:apply_force(0, 0)
+    if(self.move_type == MOVETYPE_DYNAMIC) then
+
+        -- acceleration
+        local acceleration = self.force / self.mass * delta
+        self:apply_velocity(acceleration.x, acceleration.y)
+
+        -- apply velocities
+        self:move(self.velocity.x * delta, self.velocity.y * delta)
+        self:rotate(self.rotational_velocity * delta)
+        
+        -- reset force
+        self:apply_force(0, 0)
+    
+    end
 end
 
 return rigidbody

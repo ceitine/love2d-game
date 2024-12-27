@@ -182,16 +182,54 @@ function scene:update(dt)
     self.physics_update = self.physics_update + dt
     
     if(self.physics_update >= time) then
-        for _, obj in pairs(self.objects) do
-            -- suck objects in towards mouse
+        local count = #self.objects
+        
+        -- step individual bodies
+        for i = 1, count do 
+            local body = self.objects[i]
+
+            -- movement step
             if(love.mouse.isDown(3)) then
-                local force_strength = 0.2
+                local force_strength = 1
                 local mouse_world = CAMERA:to_world(love.mouse.getX(), love.mouse.getY())
-                local direction = obj.position:direction(mouse_world)
-                obj:apply_force(direction.x * force_strength, direction.y * force_strength)
+                local direction = body.position:direction(mouse_world)
+                body:apply_force(direction.x * force_strength, direction.y * force_strength)
             end
 
-            obj:step(self.physics_update)
+            body:step(self.physics_update)
+        end
+
+        -- step collisions
+        for i = 1, count do
+            local bodyA = self.objects[i]
+
+            -- tilemap collisions
+            local bounds = bodyA:get_occupied_bounds()
+            for x = bounds.minsX, bounds.maxsX do
+                for y = bounds.minsY, bounds.maxsY do
+                    
+                    if(self:query_pos(x, y).tile ~= nil) then
+                        collision = bodyA:tile_collide(x, y)
+                        if(collision) then         
+                            bodyA:move(-collision.normal.x * collision.depth, -collision.normal.y * collision.depth) 
+                            bodyA:resolve_collision(collision) 
+                        end
+                    end
+
+                end
+            end
+
+            -- resolve collisions
+            for j = i + 1, count do
+                local bodyB = self.objects[j]
+                local collision = bodyA:collide(bodyB)
+                if(collision) then
+                    bodyA:move(-collision.normal.x * collision.depth / 2, -collision.normal.y * collision.depth / 2)           
+                    bodyB:move(collision.normal.x * collision.depth / 2, collision.normal.y * collision.depth / 2)
+                    
+                    bodyA:resolve_collision(collision, bodyB) 
+                end
+            end
         end
 
         self.physics_update = 0
