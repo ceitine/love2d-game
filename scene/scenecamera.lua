@@ -132,7 +132,8 @@ function scenecamera:render()
                     color.WHITE, "line"
                 )
 
-                render.string(tostring(obj.shape.width).. "x".. tostring(obj.shape.height), self.scale * 0.2, self.scale * 0.2, color.WHITE, self.scale * 0.02, 0, ALIGN.HORIZONTAL.LEFT, ALIGN.VERTICAL.TOP)
+                local move_type = obj.move_type == MOVETYPE_DYNAMIC and "dynamic" or "static"
+                render.string(tostring(obj.shape.width).. "x".. tostring(obj.shape.height).. "\n".. move_type, self.scale * 0.2, self.scale * 0.2, color.WHITE, self.scale * 0.02, 0, ALIGN.HORIZONTAL.LEFT, ALIGN.VERTICAL.TOP)
             love.graphics.pop()
         elseif(obj.type == COLLIDER_CIRCLE) then
             local radius = obj.shape.radius * self.scale 

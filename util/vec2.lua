@@ -1,4 +1,5 @@
 local vec2 = {}
+local epsilon = 0.0001
 local mt = {
     -- index data
     __index = vec2,
@@ -51,7 +52,6 @@ function vec2.mul(left, right)
 end
 
 function vec2.div(left, right)
-    local epsilon = 0.0001
     local left, right = validate_args(left, right)
     return vec2.new(left.x / math.max(right.x, epsilon), left.y / math.max(right.y, epsilon))
 end
@@ -83,7 +83,7 @@ function vec2:length()
 end
 
 function vec2:normalize()
-    local len = self:length()
+    local len = math.max(self:length(), epsilon)
     local x = self.x / len
     local y = self.y / len
     return vec2.new(x, y)

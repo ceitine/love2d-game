@@ -45,12 +45,13 @@ function rigidbody.new(type, pos, ...)
     
     instance.velocity = vec2.ZERO:copy()
     instance.rotational_velocity = 0
-    instance.gravity = vec2(0, 3)
+    instance.gravity = vec2(0, 9.81)
     instance.force = vec2.ZERO:copy()
     
     instance.restitution = 0.5
     instance.move_type = vargs[4] or MOVETYPE_DYNAMIC
     instance.mass = vargs[5] or 1
+    instance.inv_mass = 1 / instance.mass
     instance.density = mathx.clamp(vargs[6] or 1, MIN_DENSITY, MAX_DENSITY)
 
     if(instance.type == COLLIDER_RECT) then
@@ -355,24 +356,42 @@ function rigidbody:collide(obj)
 
     end
 
+    -- ensure normalized depth
+    if(result) then
+        result.depth = mathx.clamp(result.depth, 0, 1)
+    end
+
     return result
 end
 
 function rigidbody:resolve_collision(collision, other)
     if(not collision) then return end
     
+    -- get non nil values for other physics collider
     local other_velocity = (other and other.move_type == MOVETYPE_DYNAMIC) 
         and other.velocity 
         or 0
 
+    local other_inv_mass = other and other:get_inv_mass() or 1
     local relative_velocity = other_velocity - self.velocity
-    local e = math.min(self.restitution, other and other.restitution or 0)
-    local j = -(1 + e) * relative_velocity:dot(collision.normal)
-    j = j / (1 / self.mass) + (1 / (other and other.mass or 1))
 
-    self.velocity = self.velocity - (j / self.mass * collision.normal)
+    -- if bodies inside of eachother and already moving away from eachother
+    local velocity_dot = relative_velocity:dot(collision.normal)
+    if(velocity_dot > 0) then
+        return
+    end
+
+    -- apply forces
+    local epsilon = 0.0001
+    local e = math.min(self.restitution, other and other.restitution or 0)
+    local j = -(1 + e) * velocity_dot
+    j = j / math.max(self:get_inv_mass() + other_inv_mass, epsilon)
+
+    local impulse = j * collision.normal
+
+    self.velocity = self.velocity - impulse * self:get_inv_mass()
     if(other) then
-        other.velocity = other.velocity + (j / other.mass * collision.normal)
+        other.velocity = other.velocity + impulse * other_inv_mass
     end
 end
 
@@ -384,6 +403,20 @@ end
 function rigidbody:get_flag(key)
     if(not self.flags[key]) then return false end
     return true
+end
+
+function rigidbody:set_mass(value)
+    local value = value or 1
+    self.mass = value
+    self.inv_mass = 1 / value
+end
+
+function rigidbody:get_inv_mass()
+    if(self.move_type == MOVETYPE_STATIC) then
+        return 0
+    end
+
+    return self.inv_mass
 end
 
 -- helper functions
@@ -405,26 +438,25 @@ function rigidbody:rotate(deg)
 end
 
 function rigidbody:step(delta)
+    if(self.move_type == MOVETYPE_STATIC) then
+        return
+    end
+
     -- apply gravity
     if(self.gravity and self:get_flag(RB_FLAGS_GRAVITY)) then
-        --self:apply_velocity(self.gravity.x, self.gravity.y)
+        self:apply_velocity(self.gravity.x * delta, self.gravity.y * delta)
     end
 
-    -- apply physics
-    if(self.move_type == MOVETYPE_DYNAMIC) then
+    -- acceleration
+    local acceleration = self.force / self.mass * delta
+    self:apply_velocity(acceleration.x, acceleration.y)
 
-        -- acceleration
-        local acceleration = self.force / self.mass * delta
-        self:apply_velocity(acceleration.x, acceleration.y)
-
-        -- apply velocities
-        self:move(self.velocity.x * delta, self.velocity.y * delta)
-        self:rotate(self.rotational_velocity * delta)
+    -- apply velocities
+    self:move(self.velocity.x * delta, self.velocity.y * delta)
+    self:rotate(self.rotational_velocity * delta)
         
-        -- reset force
-        self:apply_force(0, 0)
-    
-    end
+    -- reset force
+    self:apply_force(0, 0)
 end
 
 return rigidbody

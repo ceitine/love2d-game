@@ -162,52 +162,35 @@ function scene:render(x, y, scale)
     --]]
 end
 
-local spawned = false
-function scene:update(dt)
-    -- spawn some debug objects
-    local spawnCircle, spawnRect = love.keyboard.isDown("e"), love.keyboard.isDown("q")
-    if(spawnCircle or spawnRect) then
-        if(not spawned) then
-            self.objects[#self.objects + 1] = spawnRect 
-                and rigidbody.new(COLLIDER_RECT, CAMERA.position, math.random(2, 5), math.random(1, 5), 0)
-                or rigidbody.new(COLLIDER_CIRCLE, CAMERA.position, math.random(1, 15) / 5)
-            spawned = true
+function scene:physics_step(delta)
+    local count = #self.objects
+        
+    -- step individual bodies
+    for i = 1, count do 
+        local body = self.objects[i]
+
+        -- movement step
+        if(love.mouse.isDown(3)) then
+            local force_strength = 1
+            local mouse_world = CAMERA:to_world(love.mouse.getX(), love.mouse.getY())
+            local direction = body.position:direction(mouse_world)
+            body:apply_force(direction.x * force_strength, direction.y * force_strength)
         end
-    else 
-        spawned = false
+
+        body:step(delta)
     end
 
-    -- update all physics objects
-    local time = 1 / PHYSICS_UPDATES
-    self.physics_update = self.physics_update + dt
-    
-    if(self.physics_update >= time) then
-        local count = #self.objects
-        
-        -- step individual bodies
-        for i = 1, count do 
-            local body = self.objects[i]
+    -- step collisions
+    for i = 1, count do
+        local bodyA = self.objects[i]
 
-            -- movement step
-            if(love.mouse.isDown(3)) then
-                local force_strength = 1
-                local mouse_world = CAMERA:to_world(love.mouse.getX(), love.mouse.getY())
-                local direction = body.position:direction(mouse_world)
-                body:apply_force(direction.x * force_strength, direction.y * force_strength)
-            end
+        -- tilemap collisions
+        if(bodyA.move_type ~= MOVETYPE_STATIC) then
 
-            body:step(self.physics_update)
-        end
-
-        -- step collisions
-        for i = 1, count do
-            local bodyA = self.objects[i]
-
-            -- tilemap collisions
             local bounds = bodyA:get_occupied_bounds()
             for x = bounds.minsX, bounds.maxsX do
                 for y = bounds.minsY, bounds.maxsY do
-                    
+                        
                     if(self:query_pos(x, y).tile ~= nil) then
                         collision = bodyA:tile_collide(x, y)
                         if(collision) then         
@@ -219,17 +202,52 @@ function scene:update(dt)
                 end
             end
 
-            -- resolve collisions
-            for j = i + 1, count do
-                local bodyB = self.objects[j]
-                local collision = bodyA:collide(bodyB)
-                if(collision) then
-                    bodyA:move(-collision.normal.x * collision.depth / 2, -collision.normal.y * collision.depth / 2)           
+        end
+
+        -- resolve collisions
+        for j = i + 1, count do
+            local bodyB = self.objects[j]
+            local collision = bodyA:collide(bodyB)
+            if(collision and not (bodyA.move_type == MOVETYPE_STATIC and bodyB.move_type == MOVETYPE_STATIC)) then
+                if(bodyB.move_type == MOVETYPE_STATIC) then
+                    bodyA:move(-collision.normal.x * collision.depth, -collision.normal.y * collision.depth)
+                elseif(bodyA.move_type == MOVETYPE_STATIC) then
+                    bodyB:move(collision.normal.x * collision.depth, collision.normal.y * collision.depth)
+                else
+                    bodyA:move(-collision.normal.x * collision.depth / 2, -collision.normal.y * collision.depth / 2)
                     bodyB:move(collision.normal.x * collision.depth / 2, collision.normal.y * collision.depth / 2)
-                    
-                    bodyA:resolve_collision(collision, bodyB) 
                 end
+
+                bodyA:resolve_collision(collision, bodyB)
             end
+        end
+    end
+end
+
+local spawned = false
+function scene:update(dt)
+    -- spawn some debug objects
+    local spawnCircle, spawnRect = love.keyboard.isDown("e"), love.keyboard.isDown("q")
+    if(spawnCircle or spawnRect) then
+        if(not spawned) then
+            self.objects[#self.objects + 1] = spawnRect 
+                and rigidbody.new(COLLIDER_RECT, CAMERA.position, math.random(2, 5), math.random(1, 5), 0)
+                or rigidbody.new(COLLIDER_CIRCLE, CAMERA.position, math.random(1, 15) / 5)
+
+            self.objects[#self.objects].move_type = mathx.random(0, 5) == 0 and MOVETYPE_STATIC or MOVETYPE_DYNAMIC
+            spawned = true
+        end
+    else 
+        spawned = false
+    end
+
+    -- update all physics objects
+    local time = 1 / PHYSICS_UPDATES
+    self.physics_update = self.physics_update + dt
+    
+    if(self.physics_update >= time) then
+        for i = 1, PHYSICS_ITERATIONS do
+            self:physics_step(self.physics_update / PHYSICS_ITERATIONS)
         end
 
         self.physics_update = 0
