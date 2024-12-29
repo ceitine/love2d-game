@@ -107,7 +107,7 @@ function scenecamera:render()
 
         -- collider
         if(obj.type == COLLIDER_RECT) then
-            for _, point in pairs(obj:get_corners()) do -- render corners
+            for _, point in pairs(obj:get_vertices()) do -- render corners
                 local screen_pos = self:to_screen(
                     point.x + 1,
                     point.y + 1
@@ -123,7 +123,7 @@ function scenecamera:render()
             love.graphics.push()
                 love.graphics.translate(screen_pos.x + self.scale, screen_pos.y + self.scale)
                 love.graphics.translate(obj.shape.pivot.x * self.scale, obj.shape.pivot.y * self.scale)
-                love.graphics.rotate(obj.rotation * math.pi / 180)
+                love.graphics.rotate(obj.angle * math.pi / 180)
                 love.graphics.translate(-obj.shape.pivot.x * self.scale, -obj.shape.pivot.y * self.scale)
 
                 render.rectangle(
@@ -133,19 +133,29 @@ function scenecamera:render()
                 )
 
                 local move_type = obj.move_type == MOVETYPE_DYNAMIC and "dynamic" or "static"
-                render.string(tostring(obj.shape.width).. "x".. tostring(obj.shape.height).. "\n".. move_type, self.scale * 0.2, self.scale * 0.2, color.WHITE, self.scale * 0.02, 0, ALIGN.HORIZONTAL.LEFT, ALIGN.VERTICAL.TOP)
+                render.string(tostring(obj.shape.width).. "x".. tostring(obj.shape.height).. "\n".. move_type, self.scale * 0.1, self.scale * 0.1, color.WHITE, self.scale * 0.02, 0, ALIGN.HORIZONTAL.LEFT, ALIGN.VERTICAL.TOP)
             love.graphics.pop()
         elseif(obj.type == COLLIDER_CIRCLE) then
             local radius = obj.shape.radius * self.scale 
             love.graphics.push()
                 love.graphics.translate(screen_pos.x + radius / 2 + self.scale, screen_pos.y + radius / 2 + self.scale)
-                love.graphics.rotate(obj.rotation * math.pi / 180)
+                love.graphics.rotate(obj.angle * math.pi / 180)
 
                 render.circle(
                     0, 0,
                     radius, 
                     color.WHITE, "line"
                 )
+
+                render.line(
+                    0, 0,
+                    self.scale * (obj.shape.radius + 1), 0,
+                    color.BLUE
+                )
+
+                local move_type = obj.move_type == MOVETYPE_DYNAMIC and "dynamic" or "static"
+                local offset = -obj.shape.radius / 2 * self.scale 
+                render.string("r: ".. tostring(obj.shape.radius).. "\n".. move_type, offset, offset, color.WHITE, self.scale * 0.02, 0, ALIGN.HORIZONTAL.LEFT, ALIGN.VERTICAL.TOP)
             love.graphics.pop()    
         end
 

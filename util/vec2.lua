@@ -61,12 +61,24 @@ function vec2:dot(other)
     return self.x * other.x + self.y * other.y
 end
 
+function vec2:cross(other)
+    return self.x * other.y - other.x * self.y
+end
+
 function vec2:copy()
     return vec2.new(self.x, self.y)
 end
 
 function vec2:distance(b)
     return math.sqrt(math.pow(self.x - b.x, 2) + math.pow(self.y - b.y, 2))
+end
+
+function vec2:distance_squared(b)
+    return math.pow(self.x - b.x, 2) + math.pow(self.y - b.y, 2)
+end
+
+function vec2:length_squared()
+    return math.pow(self.x, 2) + math.pow(self.y, 2)
 end
 
 function vec2:direction(to)
@@ -87,6 +99,10 @@ function vec2:normalize()
     local x = self.x / len
     local y = self.y / len
     return vec2.new(x, y)
+end
+
+function vec2:nearly(b)
+    return self:distance_squared(b) < (epsilon * epsilon)
 end
 
 function vec2:with_x(x)

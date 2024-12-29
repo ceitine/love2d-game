@@ -22,4 +22,10 @@ function mathx.clamp(value, min, max)
     return math.max(math.min(value, max), min)
 end
 
+function mathx.nearly(a, b, epsilon)
+    local epsilon = epsilon or 0.0001
+    local result = math.abs(a - b) < epsilon
+    return result
+end
+
 return mathx
