@@ -62,7 +62,7 @@ function vec2:dot(other)
 end
 
 function vec2:cross(other)
-    return self.x * other.y - other.x * self.y
+    return self.x * other.y - self.y * other.x
 end
 
 function vec2:copy()

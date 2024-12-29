@@ -19,6 +19,7 @@ function scene:create(o)
     instance.flat_chunks = {}
     instance.objects = {}
     instance.manifolds = {}
+    instance.contact_points = {}
 
     local size = 3
     local min = math.floor(-size / 2)
@@ -190,7 +191,12 @@ function scene:physics_step(delta)
 
                                 contact1 = contact1,
                                 contact2 = contact2,
-                                contact_count = contact_count
+                                contact_count = contact_count,
+
+                                tile_position = vec2(x, y),
+
+                                static_friction = 0.8,
+                                dynamic_friction = 0.7
                             }
                         end
                     end
@@ -236,7 +242,9 @@ function scene:physics_step(delta)
         local manifold = self.manifolds[i]
         
         -- resolve collision
-        manifold.bodyA:resolve_collision_basic(manifold)
+        manifold.bodyA:resolve_collision_complex(manifold, delta)
+        if(manifold.contact_count == 1) then self.contact_points[#self.contact_points + 1] = manifold.contact1:copy() 
+        elseif(manifold.contact_count == 2) then self.contact_points[#self.contact_points + 1] = manifold.contact2:copy() end
 
         -- clear manifold
         self.manifolds[i] = nil
@@ -261,18 +269,17 @@ function scene:update(dt)
     end
 
     -- update all physics objects
-    local time = 1 / PHYSICS_UPDATES
     self.physics_update = self.physics_update + dt
     
-    if(self.physics_update >= time) then
-        local delta = self.physics_update / PHYSICS_ITERATIONS
+    if(self.physics_update >= PHYSICS_STEP_TIME) then -- this actually sucks, it should actually update by delta, maybe limited to some value but still
+        local delta = PHYSICS_STEP_TIME / PHYSICS_ITERATIONS
         for i = 1, PHYSICS_ITERATIONS do
             local count = #self.objects
         
             -- step individual bodies
             for i = 1, count do 
                 local body = self.objects[i]
-
+                
                 -- movement step
                 if(love.mouse.isDown(3)) then
                     local force_strength = 1

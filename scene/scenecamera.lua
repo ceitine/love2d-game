@@ -186,6 +186,21 @@ function scenecamera:render()
         end
 
     end
+
+    for _, point in pairs(self.scene.contact_points) do
+        local screen_pos = self:to_screen(
+            point.x + 1,
+            point.y + 1
+        )
+                
+        render.rectangle(
+            screen_pos.x - 0.1 * self.scale, screen_pos.y - 0.1 * self.scale,
+            0.2 * self.scale, 0.2 * self.scale, 
+            color.WHITE
+        )
+    end
+
+    self.scene.contact_points = {}
 end
 
 return scenecamera

@@ -14,11 +14,11 @@ MOVETYPE_STATIC = 1
 MIN_DENSITY = 0.5  -- g/cm^3
 MAX_DENSITY = 21.4 -- 
 
-RB_FLAGS_LOCK_angle = 0
+RB_FLAGS_LOCK_ROTATION = 0
 RB_FLAGS_GRAVITY = 1
 
 RB_DEFAULT_FLAGS = {
-    [RB_FLAGS_LOCK_angle] = false,
+    [RB_FLAGS_LOCK_ROTATION] = false,
     [RB_FLAGS_GRAVITY] = true
 }
 
@@ -51,6 +51,9 @@ function rigidbody.new(type, pos, ...)
     instance.move_type = vargs[4] or MOVETYPE_DYNAMIC
 
     instance.restitution = 0.5
+    instance.static_friction = 0.6
+    instance.dynamic_friction = 0.4
+
     instance.density = mathx.clamp(vargs[6] or 1, MIN_DENSITY, MAX_DENSITY)
     instance.mass = vargs[5] or 1
     instance.inv_mass = instance.move_type == MOVETYPE_STATIC 
@@ -165,7 +168,7 @@ local function polygon_contact_points(polygonA, polygonB)
 
             local contact, dist_sq = point_segment_distance(p, va, vb)
             if(mathx.nearly(dist_sq, min_dist_sq)) then
-                if(not contact:nearly(contact1)) then
+                if(not contact:nearly(contact1) and not contact:nearly(contact2)) then
                     contact2 = contact
                     contact_count = 2
                 end
@@ -186,7 +189,7 @@ local function polygon_contact_points(polygonA, polygonB)
 
             local contact, dist_sq = point_segment_distance(p, va, vb)
             if(mathx.nearly(dist_sq, min_dist_sq)) then
-                if(not contact:nearly(contact1)) then
+                if(not contact:nearly(contact1) and not contact:nearly(contact2)) then
                     contact2 = contact
                     contact_count = 2
                 end
@@ -494,7 +497,7 @@ function rigidbody:find_contact_points(obj, tile_data)
         end
 
     end
-
+    
     return contact1, contact2, contact_count
 end
 
@@ -578,43 +581,51 @@ function rigidbody:resolve_collision_basic(manifold)
     end
 end
 
-function rigidbody:resolve_collision_with_rotation(manifold)
+function rigidbody:resolve_collision_complex(manifold, delta)
     if(not manifold) then return end
 
     local other = manifold.bodyB
     local collision = manifold.collision
-    local e = math.min(self.restitution, other and other.restitution or 0)
+    local e = math.min(self.restitution, other and other.restitution or 0.5)
     
     -- get non nil values for other physics collider
     local other_velocity = (other and other.move_type == MOVETYPE_DYNAMIC) 
-        and other.velocity 
+        and other:get_velocity()
         or 0
 
-    local other_inv_inertia = other and other:get_inv_inertia() or 0
-
+    local other_inv_inertia = other and other:get_inv_inertia() or 1
     local other_inv_mass = other and other:get_inv_mass() or 1
 
-    -- handle contact points
-    local contacts = {manifold.contact1, manifold.contact2}
-    local impulses = {}
-    local ra_list, rb_list = {}, {}
+    local other_center = other and other:get_center() or (manifold.tile_position + 0.5) or 0
 
+    local other_static_friction = other and other.static_friction or manifold.static_friction or 0
+    local other_dynamic_friction = other and other.dynamic_friction or manifold.dynamic_friction or 0
+
+    -- other variables
+    local static_friction = (self.static_friction + other_static_friction) * 0.5
+    local dynamic_friction = (self.dynamic_friction + other_dynamic_friction) * 0.5
+
+    local contacts = {manifold.contact1, manifold.contact2}
+    local impulses, friction_impulses = {}, {}
+    local ra_list, rb_list, j_list = {}, {}, {}
+
+    -- rotational impulses
     for i = 1, manifold.contact_count do
         local point = contacts[i]
 
         local ra = point - self:get_center()
-        local rb = point - (other and other:get_center() or 0)
+        local rb = point - other_center
         ra_list[i] = ra
         rb_list[i] = rb
 
         local ra_perp = vec2(ra.y, ra.x)
         local rb_perp = vec2(rb.y, rb.x)
 
-        local angular_velocityA = ra_perp * self.angular_velocity
-        local angular_velocityB = rb_perp * (other and other.angular_velocity or 1)
+        local angular_velocityA = ra_perp * self:get_angular_velocity()
+        local angular_velocityB = rb_perp * (other and other:get_angular_velocity() or 0)
 
         local relative_velocity = (other_velocity + angular_velocityB) 
-            - (self.velocity + angular_velocityA)
+            - (self:get_velocity() + angular_velocityA)
             
         local contact_velocity_mag = relative_velocity:dot(collision.normal)
         if(contact_velocity_mag <= 0) then
@@ -630,25 +641,82 @@ function rigidbody:resolve_collision_with_rotation(manifold)
             local j = -(1 + e) * contact_velocity_mag
             j = j / math.max(denom, epsilon)
             j = j / manifold.contact_count
+            j_list[i] = j
 
             local impulse = j * collision.normal
             impulses[i] = impulse
         end
     end
 
-    for i = 1, manifold.contact_count do
-        local impulse = impulses[i]
+    --[[for i = 1, manifold.contact_count do
+        local impulse = impulses[i] or vec2.ZERO
 
-        if(impulse) then
-            local ra = ra_list[i]
-            local rb = rb_list[i]
+        local ra = ra_list[i] or vec2.ZERO
+        local rb = rb_list[i] or vec2.ZERO
             
-            self.velocity = self.velocity - impulse * self:get_inv_mass()
-            self.angular_velocity = self.angular_velocity - ra:cross(impulse) * self:get_inv_inertia()
-            if(other) then
-                other.velocity = other.velocity + impulse * other_inv_mass
-                other.angular_velocity = other.angular_velocity + rb:cross(impulse) * other_inv_inertia
+        self.velocity = self.velocity - impulse * self:get_inv_mass()
+        self.angular_velocity = self.angular_velocity - ra:cross(impulse) * self:get_inv_inertia()
+        if(other) then
+            other.velocity = other.velocity + impulse * other_inv_mass
+            other.angular_velocity = other.angular_velocity + rb:cross(impulse) * other_inv_inertia
+        end
+    end--]]
+
+    -- friction impulses
+    for i = 1, manifold.contact_count do
+        local point = contacts[i]
+
+        local ra = ra_list[i]
+        local rb = rb_list[i]
+
+        local ra_perp = vec2(-ra.y, ra.x)
+        local rb_perp = vec2(-rb.y, rb.x)
+
+        local angular_velocityA = ra_perp * self:get_angular_velocity()
+        local angular_velocityB = rb_perp * (other and other:get_angular_velocity() or 0)
+
+        local relative_velocity = (other_velocity + angular_velocityB) 
+            - (self:get_velocity() + angular_velocityA)
+  
+        local tangent = relative_velocity - relative_velocity:dot(collision.normal) * collision.normal
+        if(not tangent:nearly(vec2.ZERO)) then
+            tangent = tangent:normalize()
+            local epsilon = 0.0001
+
+            local ra_perp_dotT = ra_perp:dot(tangent)
+            local rb_perp_dotT = rb_perp:dot(tangent)
+
+            local denom = self:get_inv_mass() + other_inv_mass 
+                + (ra_perp_dotT * ra_perp_dotT) * self:get_inv_inertia()
+                + (rb_perp_dotT * rb_perp_dotT) * other_inv_inertia
+
+            local j = j_list[i] or 0
+            local jt = -relative_velocity:dot(tangent)
+            jt = jt / math.max(denom, epsilon)
+            jt = jt / manifold.contact_count
+
+            local friction_impulse
+            if(math.abs(jt) <= j * static_friction) then
+                friction_impulse = jt * tangent
+            else
+                friction_impulse = -j * tangent * dynamic_friction
             end
+
+            friction_impulses[i] = friction_impulse
+        end
+    end
+
+    for i = 1, manifold.contact_count do
+        local friction_impulse = friction_impulses[i] or vec2.ZERO
+
+        local ra = ra_list[i] or vec2.ZERO
+        local rb = rb_list[i] or vec2.ZERO
+            
+        self.velocity = self.velocity - friction_impulse * self:get_inv_mass()
+        self.angular_velocity = self.angular_velocity - ra:cross(friction_impulse) * self:get_inv_inertia()
+        if(other) then
+            other.velocity = other.velocity + friction_impulse * other_inv_mass
+            other.angular_velocity = other.angular_velocity + rb:cross(friction_impulse) * other_inv_inertia
         end
     end
 end
@@ -671,7 +739,7 @@ end
 
 function rigidbody:get_inv_mass()
     if(self.move_type == MOVETYPE_STATIC) then
-        return 0
+        return 1
     end
 
     return self.inv_mass
@@ -679,10 +747,26 @@ end
 
 function rigidbody:get_inv_inertia()
     if(self.move_type == MOVETYPE_STATIC) then
-        return 0
+        return 1
     end
 
     return self.inv_inertia
+end
+
+function rigidbody:get_velocity()
+    if(self.move_type == MOVETYPE_STATIC) then
+        return vec2.ZERO:copy()
+    end
+
+    return self.velocity
+end
+
+function rigidbody:get_angular_velocity()
+    if(self:get_flag(RB_FLAGS_LOCK_ROTATION)) then
+        return 0
+    end
+
+    return self.angular_velocity
 end
 
 -- helper functions
@@ -727,8 +811,8 @@ function rigidbody:step(delta)
     -- apply velocities
     self:move(self.velocity.x * delta, self.velocity.y * delta)
 
-    if(not self:get_flag(RB_FLAGS_LOCK_angle)) then
-        self:rotate(self.angular_velocity * delta)
+    if(not self:get_flag(RB_FLAGS_LOCK_ROTATION)) then
+        self:rotate(self.angular_velocity)
     end
 
     -- reset force
