@@ -18,7 +18,7 @@ function scene:create(o)
     instance.entities = {}
     instance.flat_chunks = {}
     instance.objects = {}
-    instance.manifolds = {}
+    instance.contact_pairs = {}
     instance.contact_points = {}
 
     local size = 3
@@ -38,6 +38,13 @@ end
 function scene.new()
     local instance = scene:create()
     SCENE = instance
+
+    instance.objects[#instance.objects + 1] = rigidbody.new(COLLIDER_RECT, vec2(-4, -2), 12, 2, 20)
+    instance.objects[#instance.objects].move_type = MOVETYPE_STATIC
+
+    instance.objects[#instance.objects + 1] = rigidbody.new(COLLIDER_RECT, vec2(4, 8), 22, 2, -30)
+    instance.objects[#instance.objects].move_type = MOVETYPE_STATIC
+
     return instance
 end
 
@@ -150,7 +157,7 @@ function scene:render(x, y, scale)
     -- draw chunks
     render.set_shader(chunk.shader)
     for _, chunk in pairs(self.flat_chunks) do
-        chunk:render(x, y, scale)
+        --chunk:render(x, y, scale)
     end
     render.set_shader()
 
@@ -164,7 +171,7 @@ function scene:render(x, y, scale)
     --]]
 end
 
-function scene:physics_step(delta)
+function scene:broad_phase()
     local count = #self.objects
 
     -- step collisions
@@ -173,57 +180,52 @@ function scene:physics_step(delta)
 
         -- tilemap collisions
         local bounds = bodyA:get_occupied_bounds()
-        if(bodyA.move_type ~= MOVETYPE_STATIC) then
+        --[[if(bodyA.move_type ~= MOVETYPE_STATIC) then
 
             for x = bounds.minsX, bounds.maxsX do
                 for y = bounds.minsY, bounds.maxsY do
                         
                     if(self:query_pos(x, y).tile ~= nil) then
-                        collision = bodyA:tile_collide(x, y)
-                        if(collision) then         
-                            bodyA:move(-collision.normal.x * collision.depth, -collision.normal.y * collision.depth) 
-                            
-                            local contact1, contact2, contact_count = bodyA:find_contact_points(nil, vec2(x, y))
-                            self.manifolds[#self.manifolds + 1] = {
-                                bodyA = bodyA,
-
-                                collision = collision,
-
-                                contact1 = contact1,
-                                contact2 = contact2,
-                                contact_count = contact_count,
-
-                                tile_position = vec2(x, y),
-
-                                static_friction = 0.8,
-                                dynamic_friction = 0.7
-                            }
-                        end
+                        self.contact_pairs[#self.contact_pairs + 1] = {
+                            bodyA = bodyA,
+                            tile_position = vec2(x, y)
+                        }
                     end
 
                 end
             end
 
-        end
+        end--]]
 
         -- resolve collisions
         for j = i + 1, count do
             local bodyB = self.objects[j]
-            local collision = bodyA:collide(bodyB)
             local both_static = bodyA.move_type == MOVETYPE_STATIC and bodyB.move_type == MOVETYPE_STATIC
 
-            if(collision and not both_static and aabb_intersects(bounds, bodyB:get_occupied_bounds())) then
-                if(bodyB.move_type == MOVETYPE_STATIC) then
-                    bodyA:move(-collision.normal.x * collision.depth, -collision.normal.y * collision.depth)
-                elseif(bodyA.move_type == MOVETYPE_STATIC) then
-                    bodyB:move(collision.normal.x * collision.depth, collision.normal.y * collision.depth)
-                else
-                    bodyA:move(-collision.normal.x * collision.depth / 2, -collision.normal.y * collision.depth / 2)
-                    bodyB:move(collision.normal.x * collision.depth / 2, collision.normal.y * collision.depth / 2)
-                end
+            if(not both_static and aabb_intersects(bounds, bodyB:get_occupied_bounds())) then
+                self.contact_pairs[#self.contact_pairs + 1] = {
+                    bodyA = bodyA,
+                    bodyB = bodyB
+                }
+            end
+        end
+    end
+end
 
+function scene:narrow_phase()
+    for i = 1, #self.contact_pairs do
+        local bodyA = self.contact_pairs[i].bodyA
+        local bodyB = self.contact_pairs[i].bodyB
+        local tile_position = self.contact_pairs[i].tile_position
+
+        -- collider vs collider
+        local manifold
+        if(bodyB) then
+            local collision = bodyA:collide(bodyB)
+            if(collision) then
+                bodyA:separate_bodies(bodyB, collision)
                 local contact1, contact2, contact_count = bodyA:find_contact_points(bodyB)
-                self.manifolds[#self.manifolds + 1] = {
+                manifold = {
                     bodyA = bodyA,
                     bodyB = bodyB,
 
@@ -233,21 +235,61 @@ function scene:physics_step(delta)
                     contact2 = contact2,
                     contact_count = contact_count
                 }
+
+                local contacts = {contact1, contact2}
+                for i = 1, contact_count do
+                    self.contact_points[#self.contact_points + 1] = contacts[i]
+                end
+            end
+        elseif(tile_position) then
+            local collision = bodyA:tile_collide(tile_position.x, tile_position.y)
+            if(collision) then
+                bodyA:move(-collision.normal.x * collision.depth, -collision.normal.y * collision.depth) 
+                            
+                local contact1, contact2, contact_count = bodyA:find_contact_points(nil, tile_position)
+                manifold = {
+                    bodyA = bodyA,
+                    tile_position = tile_position,
+
+                    collision = collision,
+
+                    contact1 = contact1,
+                    contact2 = contact2,
+                    contact_count = contact_count,
+
+                    static_friction = 0.3,
+                    dynamic_friction = 0.2
+                }
+
+                local contacts = {contact1, contact2}
+                for i = 1, contact_count do
+                    self.contact_points[#self.contact_points + 1] = contacts[i]
+                end
             end
         end
+
+        bodyA:resolve_collision_complex(manifold)
+
+        self.contact_pairs[i] = nil
     end
+end
 
-    -- go through collision manifolds
-    for i = 1, #self.manifolds do
-        local manifold = self.manifolds[i]
+function scene:step_bodies(delta)
+    local count = #self.objects
         
-        -- resolve collision
-        manifold.bodyA:resolve_collision_complex(manifold, delta)
-        if(manifold.contact_count == 1) then self.contact_points[#self.contact_points + 1] = manifold.contact1:copy() 
-        elseif(manifold.contact_count == 2) then self.contact_points[#self.contact_points + 1] = manifold.contact2:copy() end
+    -- step individual bodies
+    for i = 1, count do 
+        local body = self.objects[i]
+                
+        -- movement step
+        if(love.mouse.isDown(3)) then
+            local force_strength = 1
+            local mouse_world = CAMERA:to_world(love.mouse.getX(), love.mouse.getY())
+            local direction = body.position:direction(mouse_world)
+            body:apply_force(direction.x * force_strength, direction.y * force_strength)
+        end
 
-        -- clear manifold
-        self.manifolds[i] = nil
+        body:step(delta)
     end
 end
 
@@ -271,32 +313,30 @@ function scene:update(dt)
     -- update all physics objects
     self.physics_update = self.physics_update + dt
     
-    if(self.physics_update >= PHYSICS_STEP_TIME) then -- this actually sucks, it should actually update by delta, maybe limited to some value but still
-        local delta = PHYSICS_STEP_TIME / PHYSICS_ITERATIONS
-        for i = 1, PHYSICS_ITERATIONS do
-            local count = #self.objects
-        
-            -- step individual bodies
-            for i = 1, count do 
-                local body = self.objects[i]
-                
-                -- movement step
-                if(love.mouse.isDown(3)) then
-                    local force_strength = 1
-                    local mouse_world = CAMERA:to_world(love.mouse.getX(), love.mouse.getY())
-                    local direction = body.position:direction(mouse_world)
-                    body:apply_force(direction.x * force_strength, direction.y * force_strength)
-                end
-
-                body:step(delta)
-            end
-
-            -- collision step
-            self:physics_step(delta)
+    local time = 1 / PHYSICS_TARGET_UPDATES
+    if(self.physics_update >= time) then -- this actually sucks, it should actually update by delta, maybe limited to some value but still
+        local delta = math.min(self.physics_update, 0.5) / PHYSICS_ITERATIONS
+        for i = 1, PHYSICS_ITERATIONS do 
+            self:step_bodies(delta)
+            self:broad_phase()
+            self:narrow_phase()
         end
 
         self.physics_update = 0
     end
+end
+
+function scene:remove_entity(entity)
+    if(not entity or not self.entities[entity.id]) then return end
+    table.remove(self.entities, entity.id)
+    entity = nil
+end
+
+function scene:register_entity(entity)
+    local id = #self.entities + 1
+    if(not entity) then return end
+    self.entities[id] = entity
+    return id
 end
 
 return scene

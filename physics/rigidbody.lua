@@ -581,7 +581,7 @@ function rigidbody:resolve_collision_basic(manifold)
     end
 end
 
-function rigidbody:resolve_collision_complex(manifold, delta)
+function rigidbody:resolve_collision_complex(manifold)
     if(not manifold) then return end
 
     local other = manifold.bodyB
@@ -648,7 +648,7 @@ function rigidbody:resolve_collision_complex(manifold, delta)
         end
     end
 
-    --[[for i = 1, manifold.contact_count do
+    for i = 1, manifold.contact_count do
         local impulse = impulses[i] or vec2.ZERO
 
         local ra = ra_list[i] or vec2.ZERO
@@ -660,7 +660,7 @@ function rigidbody:resolve_collision_complex(manifold, delta)
             other.velocity = other.velocity + impulse * other_inv_mass
             other.angular_velocity = other.angular_velocity + rb:cross(impulse) * other_inv_inertia
         end
-    end--]]
+    end
 
     -- friction impulses
     for i = 1, manifold.contact_count do
@@ -769,6 +769,17 @@ function rigidbody:get_angular_velocity()
     return self.angular_velocity
 end
 
+function rigidbody:separate_bodies(other, collision)
+    if(other.move_type == MOVETYPE_STATIC) then
+        self:move(-collision.normal.x * collision.depth, -collision.normal.y * collision.depth)
+    elseif(self.move_type == MOVETYPE_STATIC) then
+        other:move(collision.normal.x * collision.depth, collision.normal.y * collision.depth)
+    else
+        self:move(-collision.normal.x * collision.depth / 2, -collision.normal.y * collision.depth / 2)
+        other:move(collision.normal.x * collision.depth / 2, collision.normal.y * collision.depth / 2)
+    end
+end
+
 -- helper functions
 function rigidbody:apply_velocity(x, y)
     self.velocity = self.velocity + vec2(x, y)
@@ -812,7 +823,7 @@ function rigidbody:step(delta)
     self:move(self.velocity.x * delta, self.velocity.y * delta)
 
     if(not self:get_flag(RB_FLAGS_LOCK_ROTATION)) then
-        self:rotate(self.angular_velocity)
+        self:rotate(self.angular_velocity * delta)
     end
 
     -- reset force
