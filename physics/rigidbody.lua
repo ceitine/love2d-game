@@ -14,6 +14,10 @@ MOVETYPE_STATIC = 1
 MIN_DENSITY = 0.5  -- g/cm^3
 MAX_DENSITY = 21.4 -- 
 
+MAX_VELOCITY = 100
+MAX_VELOCITY_SQ = MAX_VELOCITY * MAX_VELOCITY
+MAX_ANGULAR_VELOCITY = 50
+
 RB_FLAGS_LOCK_ROTATION = 0
 RB_FLAGS_GRAVITY = 1
 
@@ -53,6 +57,9 @@ function rigidbody.new(type, pos, ...)
     instance.restitution = 0.5
     instance.static_friction = 0.6
     instance.dynamic_friction = 0.4
+
+    instance.linear_damping = 0.2
+    instance.angular_damping = 0.05
 
     instance.density = mathx.clamp(vargs[6] or 1, MIN_DENSITY, MAX_DENSITY)
     instance.mass = vargs[5] or 1
@@ -214,7 +221,7 @@ end
 
 local function project_vertices(vertices, axis)
     local min, max
-    for _, point in pairs(vertices) do
+    for _, point in ipairs(vertices) do
         local projected = axis.x * point.x + axis.y * point.y
         if(min == nil or projected < min) then min = projected end
         if(max == nil or projected > max) then max = projected end
@@ -234,7 +241,7 @@ local function polygon_intersection(centerA, centerB, a, b)
             local p2 = polygon[math.max((i + 1) % points, 1)]
 
             local edge = p2 - p1
-            local axis = vec2(edge.y, edge.x):normalize()
+            local axis = vec2(-edge.y, edge.x):normalize()
 
             local minA, maxA = project_vertices(a, axis)
             local minB, maxB = project_vertices(b, axis)
@@ -297,7 +304,7 @@ local function circle_polygon_intersect(polygon_center, polygon, circle_center, 
         local p2 = polygon[math.max((i + 1) % points, 1)]
 
         local edge = p2 - p1
-        axis = vec2(edge.y, edge.x):normalize()
+        axis = vec2(-edge.y, edge.x):normalize()
 
         minA, maxA = project_vertices(polygon, axis)
         minB, maxB = project_circle(circle_center, circle_radius, axis)
@@ -364,6 +371,100 @@ local function circle_intersect(centerA, radiusA, centerB, radiusB)
     }
 end
 
+function rigidbody:raycast(from, to)
+    local dir = from:direction(to)
+    local maxDist = from:distance(to)
+    local result = { hit = false }
+
+    -- circle raycast
+    if(self.type == COLLIDER_CIRCLE) then
+        local center = self:get_center() + self.shape.pivot
+        local origin = from - center
+        
+        -- todo inside circle
+        -- quadratic coefficients
+        local b = dir:dot(origin)
+        local c = origin:dot(origin) - self.shape.radius * self.shape.radius
+        local h = b * b - c
+        if h < 0 then
+            return false
+        end
+
+        h = math.sqrt(h)
+
+        -- nearest hit
+        local t = -b - h
+        if t < 0 then
+            t = -b + h
+            if t < 0 then
+                return false
+            end
+        end
+
+        result.hit = true
+        result.hit_position = from + dir * t
+        result.normal = (result.hit_position - center):normalize()
+
+        return result
+    end
+
+    -- polygon raycast
+    if(self.type == COLLIDER_RECT) then       
+        local function ray_segment_intersection(pointA, pointB)
+            local relative = pointB - pointA
+            
+            local denom = dir:cross(relative)
+            if(denom == 0) then
+                return nil -- parallel
+            end
+
+            local t = (pointA - from):cross(relative) / denom
+            if t < 0 then
+                return nil -- behind ray
+            end
+
+            local u = (pointA - from):cross(dir) / denom
+            if u < 0 or u > 1 then
+                return nil -- outside segment
+            end
+
+            return t
+        end
+
+        local closest = math.huge
+        local hit_position, normal
+
+        local polygon = self:get_vertices()
+        local points = #polygon
+        for i = 1, points do
+            local p1 = polygon[i]
+            local p2 = polygon[math.max((i + 1) % points, 1)]
+
+            local t = ray_segment_intersection(p1, p2)
+            if(t and t < closest) then
+                local edge = p2 - p1
+
+                result.hit = true
+
+                hit_position = from + dir * t
+                normal = vec2(-edge.y, edge.x):normalize()
+                closest = t
+
+                if(normal:dot(dir) > 0) then
+                    normal = 0 - normal
+                end
+            end
+        end
+
+        if(result.hit) then
+            result.hit_position = hit_position
+            result.normal = normal
+        end
+    end
+
+    return result
+end
+
 -- collision functions
 function rigidbody:get_center(local_space)
     if(local_space) then return vec2.ZERO:copy() end
@@ -382,14 +483,14 @@ function rigidbody:get_vertices(local_space) -- rectangle x-axis corners are too
             {x = self.shape.width, y = self.shape.height} -- bottom-right
         }
 
-        for i, corner in pairs(corners) do
+        for i, corner in ipairs(corners) do
             local x, y = rotate_vector(corner.x, corner.y, self.shape.pivot.x, self.shape.pivot.y, rad)
-            
+
             if(not local_space) then
-                x = self.position.x - x + (self.shape.width - self.shape.pivot.x)
-                y = self.position.y - y + (self.shape.height - self.shape.pivot.y) -- this doesn't account for angle if pivoted, fix
+                x = self.position.x + x - self.shape.pivot.x
+                y = self.position.y + y - self.shape.pivot.y
             end
-            
+
             corners[i] = vec2(x, y)
         end
 
@@ -459,10 +560,10 @@ function rigidbody:find_contact_points(obj, tile_data)
 
         if(tile_data) then
             local tile_polygon = {
+                vec2(tile_data.x - 1, tile_data.y    ), -- bottom-left
+                vec2(tile_data.x    , tile_data.y    ), -- bottom-right
                 vec2(tile_data.x - 1, tile_data.y - 1), -- top-left
                 vec2(tile_data.x    , tile_data.y - 1), -- top-right
-                vec2(tile_data.x - 1, tile_data.y    ), -- bottom-left
-                vec2(tile_data.x    , tile_data.y    ) -- bottom-right
             }
 
             contact1, contact2, contact_count = polygon_contact_points(self:get_vertices(), tile_polygon)
@@ -499,18 +600,6 @@ function rigidbody:find_contact_points(obj, tile_data)
     end
     
     return contact1, contact2, contact_count
-end
-
-function aabb_intersects(a, b)
-    -- local a = self:get_occupied_bounds()
-    -- local b = obj:get_occupied_bounds()
-    
-    if(a.maxsX < b.minsX or b.maxsX < a.minsX 
-    or a.maxsY < b.minsY or b.maxsY < a.minsY) then
-        return false
-    end
-
-    return true
 end
 
 function rigidbody:collide(obj)
@@ -739,7 +828,7 @@ end
 
 function rigidbody:get_inv_mass()
     if(self.move_type == MOVETYPE_STATIC) then
-        return 1
+        return 0
     end
 
     return self.inv_mass
@@ -747,7 +836,7 @@ end
 
 function rigidbody:get_inv_inertia()
     if(self.move_type == MOVETYPE_STATIC) then
-        return 1
+        return 0
     end
 
     return self.inv_inertia
@@ -770,13 +859,23 @@ function rigidbody:get_angular_velocity()
 end
 
 function rigidbody:separate_bodies(other, collision)
-    if(other.move_type == MOVETYPE_STATIC) then
-        self:move(-collision.normal.x * collision.depth, -collision.normal.y * collision.depth)
-    elseif(self.move_type == MOVETYPE_STATIC) then
-        other:move(collision.normal.x * collision.depth, collision.normal.y * collision.depth)
-    else
-        self:move(-collision.normal.x * collision.depth / 2, -collision.normal.y * collision.depth / 2)
-        other:move(collision.normal.x * collision.depth / 2, collision.normal.y * collision.depth / 2)
+    local invA = self:get_inv_mass()
+    local invB = other and other:get_inv_mass() or 0
+
+    local invSum = invA + invB
+    if(invSum == 0) then return end
+
+    local percent = 0.8 -- positional correction percentage
+    local slop = 0.01 -- penetration allowance
+    local penetration = math.max(collision.depth - slop, 0)
+    local correction = collision.normal * (penetration * percent / invSum)
+
+    -- apply positional correction proportional to inverse mass
+    if(invA > 0) then
+        self:move(-correction.x * invA, -correction.y * invA)
+    end
+    if(other and invB > 0) then
+        other:move(correction.x * invB, correction.y * invB)
     end
 end
 
@@ -823,7 +922,27 @@ function rigidbody:step(delta)
     self:move(self.velocity.x * delta, self.velocity.y * delta)
 
     if(not self:get_flag(RB_FLAGS_LOCK_ROTATION)) then
-        self:rotate(self.angular_velocity * delta)
+        if(math.abs(self.angular_velocity) > MAX_ANGULAR_VELOCITY) then
+            local sign = self.angular_velocity > 0 and 1 or (self.angular_velocity < 0 and -1 or 0)
+            self.angular_velocity = sign * MAX_ANGULAR_VELOCITY
+        end
+
+        self:rotate(mathx.rad2deg(self.angular_velocity * delta))
+    end
+
+    -- apply damping
+    if(self.linear_damping and self.linear_damping > 0) then
+        local factor = 1 - math.min(self.linear_damping * delta, 1)
+        self.velocity = self.velocity * factor
+    end
+
+    if(self.angular_damping and self.angular_damping > 0) then
+        local factor = 1 - math.min(self.angular_damping * delta, 1)
+        self.angular_velocity = self.angular_velocity * factor
+    end
+
+    if(self.velocity:length_squared() > MAX_VELOCITY * MAX_VELOCITY) then
+        self.velocity = self.velocity:normalize() * MAX_VELOCITY_SQ
     end
 
     -- reset force

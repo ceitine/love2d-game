@@ -9,7 +9,6 @@ local mt = {
 -- variables
 scene.chunks = nil
 scene.flat_chunks = nil
-scene.physics_update = 0
 
 -- create new scene
 function scene:create(o)
@@ -19,9 +18,10 @@ function scene:create(o)
     instance.flat_chunks = {}
     instance.objects = {}
     instance.contact_pairs = {}
-    instance.contact_points = {}
+    instance.accumulator = 0
+    instance.body_map = {}
 
-    local size = 3
+    local size = 10
     local min = math.floor(-size / 2)
     local max = math.floor(size / 2)
     for x = min, max do
@@ -39,11 +39,11 @@ function scene.new()
     local instance = scene:create()
     SCENE = instance
 
-    instance.objects[#instance.objects + 1] = rigidbody.new(COLLIDER_RECT, vec2(-4, -2), 12, 2, 20)
+    --[[instance.objects[#instance.objects + 1] = rigidbody.new(COLLIDER_RECT, vec2(-4, -2), 12, 2, 20)
     instance.objects[#instance.objects].move_type = MOVETYPE_STATIC
 
     instance.objects[#instance.objects + 1] = rigidbody.new(COLLIDER_RECT, vec2(4, 8), 22, 2, -30)
-    instance.objects[#instance.objects].move_type = MOVETYPE_STATIC
+    instance.objects[#instance.objects].move_type = MOVETYPE_STATIC--]]
 
     return instance
 end
@@ -69,19 +69,21 @@ function scene:query_pos(x, y) -- this is in tile space!
     return result
 end
 
+-- todo: register occupied bounds to a global tile physics table so we can query fast to see if a rigidbody is nearby
 function scene:raycast(from, to, capture_path) -- this is in tile space!    
     -- some initial variables
+    local position = from:copy()
     local result = {
-        position = from:copy(),
         tile_position = vec2.ZERO,
         normal = vec2.ZERO,
-        hit = false
+        hit = false,
+        distance = 0
     }
 
     local length = from:distance(to)
 
     if(capture_path) then 
-        result.path = { result.position:floor() } 
+        result.path = { position:floor() } 
     end
 
     -- lets get the direction..
@@ -93,58 +95,73 @@ function scene:raycast(from, to, capture_path) -- this is in tile space!
 
     if(dirX >= 0) then
         stepX = 1.0
-        tMaxX = (math.floor(result.position.x) + 1 - result.position.x) / dirX
+        tMaxX = (math.floor(position.x) + 1 - position.x) / dirX
         tDeltaX = 1.0 / dirX
     else
         stepX = -1.0
-        tMaxX = (result.position.x - math.floor(result.position.x)) / -dirX
+        tMaxX = (position.x - math.floor(position.x)) / -dirX
         tDeltaX = 1.0 / -dirX
     end
 
     if(dirY >= 0) then
         stepY = 1.0
-        tMaxY = (math.floor(result.position.y) + 1 - result.position.y) / dirY
+        tMaxY = (math.floor(position.y) + 1 - position.y) / dirY
         tDeltaY = 1.0 / dirY
     else
         stepY = -1.0
-        tMaxY = (result.position.y - math.floor(result.position.y)) / -dirY
+        tMaxY = (position.y - math.floor(position.y)) / -dirY
         tDeltaY = 1.0 / -dirY
     end
 
     -- travel our ray!
-    local dist_travelled = 0
-    while(math.abs(dist_travelled) <= length) do
-        local query = self:query_pos(
-            math.floor(result.position.x), 
-            math.floor(result.position.y)
-        )
-        
-        -- we have a collision!
+    while(result.distance <= length) do
+        local tile_x = math.floor(position.x)
+        local tile_y = math.floor(position.y)
+        local query = self:query_pos(tile_x, tile_y)
+
+        -- check for body collision first!
+        local bodies = self:get_bodies_at(tile_x, tile_y)
+        if(bodies) then
+            for _, body in pairs(bodies) do
+                local body_cast = body:raycast(from, to)
+                if(body_cast and body_cast.hit) then
+                    result.body = body
+                    result.hit_position = body_cast.hit_position
+                    result.normal = body_cast.normal
+                    result.hit = true
+
+                    return result
+                end
+            end
+        end
+
+        -- we have a tile collision!
         if(query.chunk ~= nil and query.tile ~= nil) then
             result.chunk = query.chunk
             result.tile = query.tile
-            result.tile_position = query.tile_position
-            result.hit_position = vec2(dirX * dist_travelled + from.x, dirY * dist_travelled + from.y)
+            result.hit_position = vec2(dirX * result.distance + from.x, dirY * result.distance + from.y)
             result.hit = true
+            result.tile_position = query.tile_position
+
             return result
         end
 
         -- step
         if(tMaxX < tMaxY) then
-            result.position.x = result.position.x + stepX
-            dist_travelled = tMaxX
+            position.x = position.x + stepX
+            result.distance = math.abs(tMaxX)
             tMaxX = tMaxX + tDeltaX
             result.normal = vec2(-math.floor(stepX), 0)
         else
-            result.position.y = result.position.y + stepY
-            dist_travelled = tMaxY
+            position.y = position.y + stepY
+            result.distance = math.abs(tMaxY)
             tMaxY = tMaxY + tDeltaY
             result.normal = vec2(0, -math.floor(stepY))
         end
 
         -- capture path
         if(capture_path) then 
-            result.path[#result.path + 1] = result.position:copy()
+            result.path[#result.path + 1] = position:copy()
         end
     end
 
@@ -157,45 +174,71 @@ function scene:render(x, y, scale)
     -- draw chunks
     render.set_shader(chunk.shader)
     for _, chunk in pairs(self.flat_chunks) do
-        --chunk:render(x, y, scale)
+        chunk:render(x, y, scale)
     end
     render.set_shader()
 
-    --[[
-    for _, chunk in pairs(self.flat_chunks) do
+    --[[for _, chunk in pairs(self.flat_chunks) do
         for _, v in pairs(chunk.quads) do 
             local col = color.from32(mathx.random(0, 16000000, v.x + v.y + v.w + v.h)):with_alpha(150)
             render.rectangle(x + (v.x - 1 + chunk.x * chunk.WIDTH) * scale, y + (v.y - 1 + chunk.y * chunk.HEIGHT) * scale, v.w * scale, v.h * scale, col)
         end
-    end
-    --]]
+    end--]]
 end
 
-function scene:broad_phase()
+local function aabb_intersects(a, b)
+    if(a.maxsX < b.minsX or b.maxsX < a.minsX 
+    or a.maxsY < b.minsY or b.maxsY < a.minsY) then
+        return false
+    end
+
+    return true
+end
+
+local function capture_bounds(self, x, y, body)
+    if(not self.body_map[x]) then self.body_map[x] = {} end
+    if(not self.body_map[x][y]) then self.body_map[x][y] = {} end
+
+    local count = #self.body_map[x][y] + 1
+    self.body_map[x][y][count] = body
+end
+
+function scene:get_bodies_at(x, y)
+    if(self.body_map[x] and self.body_map[x][y]) then
+        return self.body_map[x][y]
+    end
+
+    return nil
+end
+
+function scene:broad_phase(should_capture_bounds)
     local count = #self.objects
 
     -- step collisions
     for i = 1, count do
         local bodyA = self.objects[i]
 
-        -- tilemap collisions
+        -- tilemap collisions and map bounds
         local bounds = bodyA:get_occupied_bounds()
-        --[[if(bodyA.move_type ~= MOVETYPE_STATIC) then
-
+        local isDynamic = bodyA.move_type ~= MOVETYPE_STATIC
+        if(should_capture_bounds or isDynamic) then
             for x = bounds.minsX, bounds.maxsX do
                 for y = bounds.minsY, bounds.maxsY do
                         
-                    if(self:query_pos(x, y).tile ~= nil) then
+                    if(isDynamic and self:query_pos(x, y).tile ~= nil) then
                         self.contact_pairs[#self.contact_pairs + 1] = {
                             bodyA = bodyA,
                             tile_position = vec2(x, y)
                         }
                     end
 
+                    if(should_capture_bounds) then
+                        capture_bounds(self, x, y, bodyA)
+                    end
+
                 end
             end
-
-        end--]]
+        end
 
         -- resolve collisions
         for j = i + 1, count do
@@ -235,11 +278,6 @@ function scene:narrow_phase()
                     contact2 = contact2,
                     contact_count = contact_count
                 }
-
-                local contacts = {contact1, contact2}
-                for i = 1, contact_count do
-                    self.contact_points[#self.contact_points + 1] = contacts[i]
-                end
             end
         elseif(tile_position) then
             local collision = bodyA:tile_collide(tile_position.x, tile_position.y)
@@ -260,11 +298,6 @@ function scene:narrow_phase()
                     static_friction = 0.3,
                     dynamic_friction = 0.2
                 }
-
-                local contacts = {contact1, contact2}
-                for i = 1, contact_count do
-                    self.contact_points[#self.contact_points + 1] = contacts[i]
-                end
             end
         end
 
@@ -302,7 +335,7 @@ function scene:update(dt)
             self.objects[#self.objects + 1] = spawnRect 
                 and rigidbody.new(COLLIDER_RECT, CAMERA.position, math.random(2, 5), math.random(1, 5), 0)
                 or rigidbody.new(COLLIDER_CIRCLE, CAMERA.position, math.random(1, 15) / 5)
-
+            
             self.objects[#self.objects].move_type = mathx.random(0, 5) == 0 and MOVETYPE_STATIC or MOVETYPE_DYNAMIC
             spawned = true
         end
@@ -310,19 +343,21 @@ function scene:update(dt)
         spawned = false
     end
 
-    -- update all physics objects
-    self.physics_update = self.physics_update + dt
-    
-    local time = 1 / PHYSICS_TARGET_UPDATES
-    if(self.physics_update >= time) then -- this actually sucks, it should actually update by delta, maybe limited to some value but still
-        local delta = math.min(self.physics_update, 0.5) / PHYSICS_ITERATIONS
-        for i = 1, PHYSICS_ITERATIONS do 
-            self:step_bodies(delta)
-            self:broad_phase()
+    -- update rigidbodies
+    local FIXED_TIME = 1 / PHYSICS_TARGET_UPDATES
+    local DELTA_TIME = FIXED_TIME / PHYSICS_ITERATIONS
+
+    self.accumulator = math.min(self.accumulator + dt, PHYSICS_MAX_ACCUMULATOR)
+    while self.accumulator >= FIXED_TIME do
+        for i = 1, PHYSICS_ITERATIONS do
+            if(i == PHYSICS_ITERATIONS) then self.body_map = {} end
+
+            self:step_bodies(DELTA_TIME)
+            self:broad_phase(i == PHYSICS_ITERATIONS)
             self:narrow_phase()
         end
 
-        self.physics_update = 0
+        self.accumulator = self.accumulator - FIXED_TIME
     end
 end
 

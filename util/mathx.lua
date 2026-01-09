@@ -1,4 +1,14 @@
 local mathx = {}
+local DEG2RAD = 0.0174532925
+local RAD2DEG = 57.2957795
+
+function mathx.deg2rad(a)
+    return a * DEG2RAD
+end
+
+function mathx.rad2deg(a)
+    return a * RAD2DEG
+end
 
 function mathx.lerp(a, b, delta, clamp)
     clamp = clamp or true

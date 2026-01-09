@@ -14,6 +14,7 @@ function scenecamera:create(o)
     local instance = o or {}
     instance.position = vec2.ZERO:copy()
     instance.scene = SCENE
+
     setmetatable(instance, mt)
     self.__index = instance
     return instance
@@ -51,44 +52,47 @@ function scenecamera:render()
     self.scene:render(x, y, self.scale)
 
     -- draw fps and crosshair
-    render.string(math.floor(1 / time.delta), 0, 0, color.new(60, 200, 60), 0.8)
+    render.string(math.floor(1 / time.delta), 10, 10, color.new(60, 200, 60), 0.8)
+
+    render.string("world pos: ".. tostring(CAMERA.position), 10, 40, color.WHITE, 0.8)
 
     -- raycast debugging
     local endX, endY = love.mouse.getX(), love.mouse.getY()
     local from = self:to_world(love.graphics.getWidth() / 2, love.graphics.getHeight() / 2)
     local to = self:to_world(endX, endY)
     local raycast = self.scene:raycast(from, to, true)
-    for _, pos in pairs(raycast.path) do 
-        local screen_pos = self:to_screen(
-            math.floor(pos.x), 
-            math.floor(pos.y)
-        )
-
-        render.rectangle(screen_pos.x, screen_pos.y, self.scale, self.scale, color.GREEN)
+    if(raycast.path) then
+        for i, pos in pairs(raycast.path) do 
+            local screen_pos = self:to_screen(
+                math.floor(pos.x), 
+                math.floor(pos.y)
+            )
+            local color = i == #raycast.path and color.WHITE or color.GREEN
+            render.rectangle(screen_pos.x, screen_pos.y, self.scale, self.scale, color:with_alpha(150))
+        end
     end
 
     if(raycast.hit) then
         local screen_pos = self:to_screen(
-            math.floor(raycast.position.x), 
-            math.floor(raycast.position.y)
+            math.floor(raycast.tile_position.x), 
+            math.floor(raycast.tile_position.y)
         )
 
-        render.rectangle(screen_pos.x, screen_pos.y, self.scale, self.scale, color.WHITE)
-
-        local from_normal = screen_pos + self.scale / 2 + raycast.normal * self.scale / 2
+        local hit_position = self:to_screen(raycast.hit_position.x, raycast.hit_position.y)
+        local from_normal = hit_position
         local to_normal = from_normal + raycast.normal * self.scale / 2
+        endX, endY = hit_position.x, hit_position.y
+
         render.line(from_normal.x, from_normal.y, to_normal.x, to_normal.y, color.BLUE)
-
-        local hit_pos = self:to_screen(
-            raycast.hit_position.x,
-            raycast.hit_position.y
-        )
-
-        endX, endY = hit_pos.x, hit_pos.y
-    
+        
         if(love.mouse.isDown(2)) then
-            raycast.chunk:set_tile(nil, raycast.tile_position.x, raycast.tile_position.y)
-            raycast.chunk:build()
+            if(raycast.chunk ~= nil) then
+                raycast.chunk:set_tile(nil, raycast.tile_position.x, raycast.tile_position.y)
+                raycast.chunk:build()
+            elseif(raycast.body ~= nil) then
+                local impulse = raycast.normal * -1000
+                raycast.body:apply_force(impulse.x, impulse.y)
+            end
         end
     end
 
@@ -160,7 +164,7 @@ function scenecamera:render()
         end
 
         -- occupied bounds
-        local bounds = obj:get_occupied_bounds()
+        --[[local bounds = obj:get_occupied_bounds()
         local collision
         for x = bounds.minsX, bounds.maxsX do
             for y = bounds.minsY, bounds.maxsY do
@@ -183,24 +187,27 @@ function scenecamera:render()
                     col:with_alpha(80)
                 )
             end
+        end--]]
+
+    end
+
+    for x, _ in pairs(self.scene.body_map) do
+        for y, _ in pairs(self.scene.body_map[x]) do
+            local bodies = self.scene.body_map[x][y]
+            if(bodies) then
+                local screen_pos = self:to_screen(
+                    math.floor(x),
+                    math.floor(y)
+                )
+
+                render.rectangle(
+                    screen_pos.x, screen_pos.y,
+                    self.scale, self.scale,
+                    color.GREEN:with_alpha(20)
+                )
+            end
         end
-
     end
-
-    for _, point in pairs(self.scene.contact_points) do
-        local screen_pos = self:to_screen(
-            point.x + 1,
-            point.y + 1
-        )
-                
-        render.rectangle(
-            screen_pos.x - 0.1 * self.scale, screen_pos.y - 0.1 * self.scale,
-            0.2 * self.scale, 0.2 * self.scale, 
-            color.WHITE
-        )
-    end
-
-    self.scene.contact_points = {}
 end
 
 return scenecamera

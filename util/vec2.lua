@@ -6,7 +6,7 @@ local mt = {
 
     -- tostring override
     __tostring = function(self)
-        return string.format("X: %d, Y: %d", self.x, self.y)
+        return string.format("X: %.1f, Y: %.1f", self.x, self.y)
     end,
 
     -- arithmetics
@@ -69,16 +69,37 @@ function vec2:copy()
     return vec2.new(self.x, self.y)
 end
 
+function vec2:reflect(normal)
+    local w = self - 2 * self:dot(normal) * normal
+    return w
+end
+
 function vec2:distance(b)
-    return math.sqrt(math.pow(self.x - b.x, 2) + math.pow(self.y - b.y, 2))
+    local x = self.x - b.x
+    local y = self.y - b.y
+    return math.sqrt(x * x + y * y)
 end
 
 function vec2:distance_squared(b)
-    return math.pow(self.x - b.x, 2) + math.pow(self.y - b.y, 2)
+    local x = self.x - b.x
+    local y = self.y - b.y
+    return x * x + y * y
+end
+
+function vec2:rotate(ang, origin)
+    local cos = math.cos(ang)
+    local sin = math.sin(ang)  
+
+    local vector = origin and self - origin or self
+    
+    return vec2.new(
+        vector.x * cos - vector.y * sin,
+        vector.x * sin + vector.y * cos
+    )
 end
 
 function vec2:length_squared()
-    return math.pow(self.x, 2) + math.pow(self.y, 2)
+    return self.x * self.x + self.y * self.y
 end
 
 function vec2:direction(to)
@@ -91,7 +112,7 @@ function vec2:floor()
 end
 
 function vec2:length()
-    return math.sqrt(math.pow(self.x, 2) + math.pow(self.y, 2))
+    return math.sqrt(self.x * self.x + self.y * self.y)
 end
 
 function vec2:normalize()

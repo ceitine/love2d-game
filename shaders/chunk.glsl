@@ -21,7 +21,6 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 pixel_coords)
     // get texture
     vec4 tex_col = texture2DArray(tex, VaryingTexCoord.xyz);
     //vec3 mult = col * level;
-    //tex_col.rgb = vec3(1, 1, 1);
     return vec4(tex_col.rgb, 1);
 }
 #endif

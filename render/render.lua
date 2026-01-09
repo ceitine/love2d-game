@@ -22,7 +22,7 @@ function render.string(text, x, y, col, scale, rotation, align_horizontal, align
 
     -- draw
     render.setcol(col)
-    local origin = align.calc_text(text, render.DEFAULT_FONT, align_horizontal or ALIGN.HORIZONTAL.CENTER, align_vertical or ALIGN.VERTICAL.MIDDLE)
+    local origin = align.calc_text(text, render.DEFAULT_FONT, align_horizontal or ALIGN.HORIZONTAL.LEFT, align_vertical or ALIGN.VERTICAL.TOP)
     love.graphics.print(
         text, 
         x + origin.x, y + origin.y, 

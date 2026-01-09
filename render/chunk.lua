@@ -20,12 +20,6 @@ local mt = {
 local WIDTH, HEIGHT = 32, 32
 chunk.WIDTH = WIDTH
 chunk.HEIGHT = HEIGHT
-local AMBIENT_LIGHT = {
-    r = 63, 
-    g = 63, -- color 0-63
-    b = 63, -- (r, g, b) * 4
-    level = 7, -- light level 0-7
-}
 
 -- shader
 local vtx_format = {
@@ -132,8 +126,7 @@ function chunk.new(x, y, scene)
     instance.all = (scene and scene.chunks) or chunk.all
     instance.scene = scene
     instance.tiles = {}
-    -- instance.lightmap = {}
-
+    
     for x = 1, WIDTH do
         for y = 1, HEIGHT do
             local noise = love.math.noise(x / WIDTH + instance.x, y / HEIGHT + instance.y)
@@ -188,74 +181,6 @@ function chunk:get_neighbor(x, y)
     end
     
     return data
-end
-
-function chunk:fetch_light(x, y) -- for fetching points
-    return (self.lightmap[y] or {})[x] or AMBIENT_LIGHT
-end
-
-function chunk:fetch_lights(x, y) -- for fetching tiles
-    local tl = self:fetch_light(x, y)
-    local tr = self:fetch_light(x + 1, y)
-    local bl = self:fetch_light(x, y + 1)
-    local br = self:fetch_light(x + 1, y + 1)
-
-    return {
-        bit.bor( -- top left
-            bit.lshift(bit.band(tl.r, 0x3F), 16),
-            bit.lshift(bit.band(tl.g, 0x3F), 10),
-            bit.lshift(bit.band(tl.b, 0x3F), 4),
-            bit.lshift(bit.band(tl.level, 0x7), 1)
-        ),
-
-        bit.bor( -- top right
-            bit.lshift(bit.band(tr.r, 0x3F), 16),
-            bit.lshift(bit.band(tr.g, 0x3F), 10),
-            bit.lshift(bit.band(tr.b, 0x3F), 4),
-            bit.lshift(bit.band(tr.level, 0x7), 1)
-        ),
-
-        bit.bor( -- bottom left
-            bit.lshift(bit.band(bl.r, 0x3F), 16),
-            bit.lshift(bit.band(bl.g, 0x3F), 10),
-            bit.lshift(bit.band(bl.b, 0x3F), 4),
-            bit.lshift(bit.band(bl.level, 0x7), 1)
-        ),
-
-        bit.bor( -- bottom right
-            bit.lshift(bit.band(br.r, 0x3F), 16),
-            bit.lshift(bit.band(br.g, 0x3F), 10),
-            bit.lshift(bit.band(br.b, 0x3F), 4),
-            bit.lshift(bit.band(br.level, 0x7), 1)
-        ),
-    }
-end
-
-function chunk:generate_lightmap()
-    local light_points = {}
-    for y = 1, HEIGHT * 2 do
-        light_points[y] = {}
-        for x = 1, WIDTH * 2 do
-            light_points[y][x] = 0
-        end
-    end
-    --[[
-    the idea is:
-    -> generate points in the following style: https://i.imgur.com/bfDad8d.png
-    -> every point will contain the light level that ranges from 0 to 2,
-        - 0 being completely black, 2 being white, the value will be lerped from shader
-        - points affected by a light, will have a tint value, otherwise it will just use the default environment color
-    - go through all light objects in the chunk, use the light's range to update the lightmap point tint
-    - light tint data is 6 bits for each color channel, light level will work with just 2, in total 20 bits, just enough to fill the second data
-        - Red (6 bits) 0-63
-        - Green (6 bits) 0-63
-        - Blue (6 bits) 0-63
-        - Level (3 bits) 0-7
-        (It will lose some precision, 256/64, 4x) 
-
-    - in add quad the respective point will be used for each vertex's light data, we will need a fetch_light(x, y) function.
-        - top left would use fetch_light(x, y), etc..
-    ]]
 end
 
 function chunk:build()
@@ -371,6 +296,12 @@ end
 function chunk:render(x, y, scale)
     if(self.mesh == nil) then 
         return
+    end
+
+    -- update light texture
+    if(self.light_update) then
+        self:update_light_texture()
+        self.light_update = false
     end
 
     -- relative positioning

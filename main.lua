@@ -19,7 +19,6 @@ end
 love.update = function(dt)
     time.delta = dt
     time.now = time.now + dt
-
     hook.call(HOOK_UPDATE, dt)
 end
 
