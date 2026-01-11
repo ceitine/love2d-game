@@ -376,57 +376,50 @@ function rigidbody:raycast(from, to)
     local maxDist = from:distance(to)
     local result = { hit = false }
 
-    -- circle raycast
+    -- circle raycast 
     if(self.type == COLLIDER_CIRCLE) then
-        local center = self:get_center() + self.shape.pivot
+        local center = self:get_center(true) + 1
         local origin = from - center
-        
-        -- todo inside circle
-        -- quadratic coefficients
+
         local b = dir:dot(origin)
-        local c = origin:dot(origin) - self.shape.radius * self.shape.radius
+        local c = origin:dot(origin) - (self.shape.radius * self.shape.radius)
         local h = b * b - c
-        if h < 0 then
-            return false
+        if(h < 0) then
+            return result
         end
 
         h = math.sqrt(h)
-
-        -- nearest hit
         local t = -b - h
-        if t < 0 then
+        if(t < 0) then
             t = -b + h
-            if t < 0 then
-                return false
+
+            if(t < 0) then
+                return result
             end
+        end
+
+        if(t > maxDist) then
+            return result
         end
 
         result.hit = true
         result.hit_position = from + dir * t
         result.normal = (result.hit_position - center):normalize()
-
         return result
     end
 
     -- polygon raycast
-    if(self.type == COLLIDER_RECT) then       
-        local function ray_segment_intersection(pointA, pointB)
-            local relative = pointB - pointA
-            
+    if(self.type == COLLIDER_RECT) then
+        local function ray_segment_intersection(a, b)
+            local relative = b - a
             local denom = dir:cross(relative)
-            if(denom == 0) then
-                return nil -- parallel
-            end
+            if denom == 0 then return nil end -- parallel
 
-            local t = (pointA - from):cross(relative) / denom
-            if t < 0 then
-                return nil -- behind ray
-            end
+            local t = (a - from):cross(relative) / denom
+            if t < 0 or t > maxDist then return nil end -- behind ray or beyond segment
 
-            local u = (pointA - from):cross(dir) / denom
-            if u < 0 or u > 1 then
-                return nil -- outside segment
-            end
+            local u = (a - from):cross(dir) / denom
+            if u < 0 or u > 1 then return nil end -- outside segment
 
             return t
         end
@@ -434,29 +427,23 @@ function rigidbody:raycast(from, to)
         local closest = math.huge
         local hit_position, normal
 
-        local polygon = self:get_vertices()
+        local polygon = self:get_vertices(true)
         local points = #polygon
         for i = 1, points do
-            local p1 = polygon[i]
-            local p2 = polygon[math.max((i + 1) % points, 1)]
-
+            local p1 = polygon[i] - self.shape.pivot + 1
+            local p2 = polygon[(i % points) + 1] - self.shape.pivot + 1
             local t = ray_segment_intersection(p1, p2)
-            if(t and t < closest) then
+            if t and t < closest then
                 local edge = p2 - p1
-
-                result.hit = true
-
                 hit_position = from + dir * t
                 normal = vec2(-edge.y, edge.x):normalize()
                 closest = t
-
-                if(normal:dot(dir) > 0) then
-                    normal = 0 - normal
-                end
+                if normal:dot(dir) > 0 then normal = 0 - normal end
             end
         end
 
-        if(result.hit) then
+        if closest < math.huge then
+            result.hit = true
             result.hit_position = hit_position
             result.normal = normal
         end
@@ -477,21 +464,20 @@ function rigidbody:get_vertices(local_space) -- rectangle x-axis corners are too
     if(self.type == COLLIDER_RECT) then
         -- find all corners of rectangle
         local corners = {
-            {x = 0, y = 0}, -- top-left
-            {x = self.shape.width, y = 0}, -- top-right
-            {x = 0, y = self.shape.height}, -- bottom-left
-            {x = self.shape.width, y = self.shape.height} -- bottom-right
+            vec2(0,                 0),                 -- top-left
+            vec2(self.shape.width,  0),                 -- top-right
+            vec2(self.shape.width,  self.shape.height), -- bottom-right
+            vec2(0,                 self.shape.height)  -- bottom-left
         }
 
         for i, corner in ipairs(corners) do
-            local x, y = rotate_vector(corner.x, corner.y, self.shape.pivot.x, self.shape.pivot.y, rad)
+            local rotated = corner:rotate(rad, self.shape.pivot)
 
             if(not local_space) then
-                x = self.position.x + x - self.shape.pivot.x
-                y = self.position.y + y - self.shape.pivot.y
+                rotated = self.position + rotated - self.shape.pivot
             end
 
-            corners[i] = vec2(x, y)
+            corners[i] = rotated
         end
 
         return corners
@@ -536,17 +522,24 @@ function rigidbody:tile_collide(x, y)
         vec2(x - 1, y - 1), -- top-left
         vec2(x    , y - 1), -- top-right
         vec2(x - 1, y    ), -- bottom-left
-        vec2(x    , y    ) -- bottom-right
+        vec2(x    , y    ), -- bottom-right
     }
 
-    local tile_center = vec2(x + 0.5, y + 0.5)
+    local tile_center = vec2(x, y)
+    local result
 
     if(self.type == COLLIDER_RECT) then
-        return polygon_intersection(self:get_center(), tile_center, self:get_vertices(), tile_polygon)
-
+        result = polygon_intersection(self:get_center(), tile_center, self:get_vertices(), tile_polygon)
     elseif(self.type == COLLIDER_CIRCLE) then
-        return circle_polygon_intersect(tile_center, tile_polygon, self:get_center(), self.shape.radius)
+        result = circle_polygon_intersect(tile_center, tile_polygon, self:get_center(), self.shape.radius)
     end
+
+    -- ensure normalized depth
+    if(result) then
+        result.depth = mathx.clamp(result.depth, 0, 1)
+    end
+
+    return result
 end
 
 function rigidbody:find_contact_points(obj, tile_data)
@@ -560,10 +553,10 @@ function rigidbody:find_contact_points(obj, tile_data)
 
         if(tile_data) then
             local tile_polygon = {
-                vec2(tile_data.x - 1, tile_data.y    ), -- bottom-left
-                vec2(tile_data.x    , tile_data.y    ), -- bottom-right
                 vec2(tile_data.x - 1, tile_data.y - 1), -- top-left
                 vec2(tile_data.x    , tile_data.y - 1), -- top-right
+                vec2(tile_data.x - 1, tile_data.y    ), -- bottom-left
+                vec2(tile_data.x    , tile_data.y    ), -- bottom-right
             }
 
             contact1, contact2, contact_count = polygon_contact_points(self:get_vertices(), tile_polygon)
@@ -687,8 +680,8 @@ function rigidbody:resolve_collision_complex(manifold)
 
     local other_center = other and other:get_center() or (manifold.tile_position + 0.5) or 0
 
-    local other_static_friction = other and other.static_friction or manifold.static_friction or 0
-    local other_dynamic_friction = other and other.dynamic_friction or manifold.dynamic_friction or 0
+    local other_static_friction = (other and other.static_friction or manifold.static_friction) or 0
+    local other_dynamic_friction = (other and other.dynamic_friction or manifold.dynamic_friction) or 0
 
     -- other variables
     local static_friction = (self.static_friction + other_static_friction) * 0.5
@@ -707,8 +700,8 @@ function rigidbody:resolve_collision_complex(manifold)
         ra_list[i] = ra
         rb_list[i] = rb
 
-        local ra_perp = vec2(ra.y, ra.x)
-        local rb_perp = vec2(rb.y, rb.x)
+        local ra_perp = vec2(-ra.y, ra.x)
+        local rb_perp = vec2(-rb.y, rb.x)
 
         local angular_velocityA = ra_perp * self:get_angular_velocity()
         local angular_velocityB = rb_perp * (other and other:get_angular_velocity() or 0)
@@ -865,15 +858,15 @@ function rigidbody:separate_bodies(other, collision)
     local invSum = invA + invB
     if(invSum == 0) then return end
 
-    local percent = 0.8 -- positional correction percentage
-    local slop = 0.01 -- penetration allowance
+    local percent = 0.8
+    local slop = 0.01
     local penetration = math.max(collision.depth - slop, 0)
     local correction = collision.normal * (penetration * percent / invSum)
 
-    -- apply positional correction proportional to inverse mass
     if(invA > 0) then
         self:move(-correction.x * invA, -correction.y * invA)
     end
+    
     if(other and invB > 0) then
         other:move(correction.x * invB, correction.y * invB)
     end

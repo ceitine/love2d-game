@@ -93,8 +93,8 @@ function vec2:rotate(ang, origin)
     local vector = origin and self - origin or self
     
     return vec2.new(
-        vector.x * cos - vector.y * sin,
-        vector.x * sin + vector.y * cos
+        vector.x * cos - vector.y * sin + (origin and origin.x or 0),
+        vector.x * sin + vector.y * cos + (origin and origin.y or 0)
     )
 end
 

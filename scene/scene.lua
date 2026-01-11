@@ -81,9 +81,12 @@ function scene:raycast(from, to, capture_path) -- this is in tile space!
     }
 
     local length = from:distance(to)
-
     if(capture_path) then 
         result.path = { position:floor() } 
+    end
+
+    if(length == 0) then
+        return result
     end
 
     -- lets get the direction..
@@ -119,22 +122,6 @@ function scene:raycast(from, to, capture_path) -- this is in tile space!
         local tile_y = math.floor(position.y)
         local query = self:query_pos(tile_x, tile_y)
 
-        -- check for body collision first!
-        local bodies = self:get_bodies_at(tile_x, tile_y)
-        if(bodies) then
-            for _, body in pairs(bodies) do
-                local body_cast = body:raycast(from, to)
-                if(body_cast and body_cast.hit) then
-                    result.body = body
-                    result.hit_position = body_cast.hit_position
-                    result.normal = body_cast.normal
-                    result.hit = true
-
-                    return result
-                end
-            end
-        end
-
         -- we have a tile collision!
         if(query.chunk ~= nil and query.tile ~= nil) then
             result.chunk = query.chunk
@@ -144,6 +131,23 @@ function scene:raycast(from, to, capture_path) -- this is in tile space!
             result.tile_position = query.tile_position
 
             return result
+        end
+
+        -- check for body collision
+        local bodies = self:get_bodies_at(tile_x, tile_y)
+        if(bodies) then
+            for _, body in pairs(bodies) do
+                local center = body:get_center()
+                local body_cast = body:raycast(from - center, to - center)
+                if(body_cast and body_cast.hit) then
+                    result.body = body
+                    result.hit_position = center + body_cast.hit_position
+                    result.normal = body_cast.normal
+                    result.hit = true
+
+                    return result
+                end
+            end
         end
 
         -- step
@@ -257,9 +261,10 @@ end
 
 function scene:narrow_phase()
     for i = 1, #self.contact_pairs do
-        local bodyA = self.contact_pairs[i].bodyA
-        local bodyB = self.contact_pairs[i].bodyB
-        local tile_position = self.contact_pairs[i].tile_position
+        local pair = self.contact_pairs[i]
+        local bodyA = pair.bodyA
+        local bodyB = pair.bodyB
+        local tile_position = pair.tile_position
 
         -- collider vs collider
         local manifold
@@ -282,8 +287,8 @@ function scene:narrow_phase()
         elseif(tile_position) then
             local collision = bodyA:tile_collide(tile_position.x, tile_position.y)
             if(collision) then
-                bodyA:move(-collision.normal.x * collision.depth, -collision.normal.y * collision.depth) 
-                            
+                bodyA:separate_bodies(nil, collision) 
+                
                 local contact1, contact2, contact_count = bodyA:find_contact_points(nil, tile_position)
                 manifold = {
                     bodyA = bodyA,
@@ -295,8 +300,8 @@ function scene:narrow_phase()
                     contact2 = contact2,
                     contact_count = contact_count,
 
-                    static_friction = 0.3,
-                    dynamic_friction = 0.2
+                    static_friction = 0.6,
+                    dynamic_friction = 0.45
                 }
             end
         end
@@ -334,7 +339,7 @@ function scene:update(dt)
         if(not spawned) then
             self.objects[#self.objects + 1] = spawnRect 
                 and rigidbody.new(COLLIDER_RECT, CAMERA.position, math.random(2, 5), math.random(1, 5), 0)
-                or rigidbody.new(COLLIDER_CIRCLE, CAMERA.position, math.random(1, 15) / 5)
+                or rigidbody.new(COLLIDER_CIRCLE, CAMERA.position, math.random(2, 15) / 5)
             
             self.objects[#self.objects].move_type = mathx.random(0, 5) == 0 and MOVETYPE_STATIC or MOVETYPE_DYNAMIC
             spawned = true

@@ -53,8 +53,7 @@ function scenecamera:render()
 
     -- draw fps and crosshair
     render.string(math.floor(1 / time.delta), 10, 10, color.new(60, 200, 60), 0.8)
-
-    render.string("world pos: ".. tostring(CAMERA.position), 10, 40, color.WHITE, 0.8)
+    render.string("pos: ".. tostring(CAMERA.position), 10, 10, color.WHITE, 0.8)
 
     -- raycast debugging
     local endX, endY = love.mouse.getX(), love.mouse.getY()
@@ -90,7 +89,7 @@ function scenecamera:render()
                 raycast.chunk:set_tile(nil, raycast.tile_position.x, raycast.tile_position.y)
                 raycast.chunk:build()
             elseif(raycast.body ~= nil) then
-                local impulse = raycast.normal * -1000
+                local impulse = from:direction(to):normalize() * 1000
                 raycast.body:apply_force(impulse.x, impulse.y)
             end
         end
@@ -191,7 +190,7 @@ function scenecamera:render()
 
     end
 
-    for x, _ in pairs(self.scene.body_map) do
+    --[[for x, _ in pairs(self.scene.body_map) do
         for y, _ in pairs(self.scene.body_map[x]) do
             local bodies = self.scene.body_map[x][y]
             if(bodies) then
@@ -207,7 +206,7 @@ function scenecamera:render()
                 )
             end
         end
-    end
+    end--]]
 end
 
 return scenecamera

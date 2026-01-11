@@ -44,7 +44,8 @@ local scale_options = {
     16,
     20,
     26,
-    32
+    32,
+    48
 }
 
 local center_index = math.ceil(#scale_options / 2)
@@ -75,11 +76,11 @@ hook.register("scene_update", "update", function(dt)
             camera_settings.drag = {
                 x = love.mouse.getX(),
                 y = love.mouse.getY(),
-                old = {x = camera.position.x * camera.scale, y = camera.position.y * camera.scale, scale = camera.scale},
+                old = {x = camera.position.x * camera.scale, y = camera.position.y * camera.scale},
             }
         end
 
-        local scale = 1 / camera_settings.drag.old.scale
+        local scale = 1 / camera.scale
         local dx = camera_settings.drag.x - love.mouse.getX()
         local dy = camera_settings.drag.y - love.mouse.getY()
 
