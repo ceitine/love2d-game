@@ -20,15 +20,7 @@ function scene:create(o)
     instance.contact_pairs = {}
     instance.accumulator = 0
     instance.body_map = {}
-
-    local size = 10
-    local min = math.floor(-size / 2)
-    local max = math.floor(size / 2)
-    for x = min, max do
-        for y = min, max do
-            instance.flat_chunks[y * (size + 1) + x] = chunk.new(x, y, instance)
-        end
-    end
+    instance.lightmap = {}
 
     setmetatable(instance, mt)
     self.__index = instance
@@ -39,16 +31,28 @@ function scene.new()
     local instance = scene:create()
     SCENE = instance
 
-    --[[instance.objects[#instance.objects + 1] = rigidbody.new(COLLIDER_RECT, vec2(-4, -2), 12, 2, 20)
-    instance.objects[#instance.objects].move_type = MOVETYPE_STATIC
+    local size = 10
+    local min = math.floor(-size / 2)
+    local max = math.floor(size / 2)
+    for x = min, max do
+        for y = min, max do
+            instance.flat_chunks[y * (size + 1) + x] = chunk.new(x, y, instance)
+        end
+    end
 
-    instance.objects[#instance.objects + 1] = rigidbody.new(COLLIDER_RECT, vec2(4, 8), 22, 2, -30)
-    instance.objects[#instance.objects].move_type = MOVETYPE_STATIC--]]
+    instance:refresh_chunks()
 
     return instance
 end
 
 -- instance functions
+function scene:refresh_chunks()
+    for _, chunk in pairs(self.flat_chunks) do 
+        chunk:update_lightmap()
+        chunk:build()
+    end
+end
+
 function scene:query_pos(x, y) -- this is in tile space!
     local result = {}
     result.position = vec2(

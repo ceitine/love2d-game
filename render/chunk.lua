@@ -112,6 +112,11 @@ local function set_chunk_at(x, y, chunk, all)
     all[x][y] = chunk
 end
 
+local function get_chunk_at(x, y)
+    if(all[x] == nil) then return nil end
+    return all[x][y]
+end
+
 function chunk:create(o)
     local instance = o or {}
     setmetatable(instance, mt)
@@ -136,8 +141,6 @@ function chunk.new(x, y, scene)
             end
         end
     end
-
-    instance:build()
     
     set_chunk_at(x, y, instance, instance.all)
 
@@ -165,22 +168,51 @@ function chunk:get_tile(x, y)
     return self.tiles[y][x]
 end
 
-function chunk:get_neighbor(x, y)
-    local data = {}
-    local pos = {
-        self.x + math.ceil((x + 1) / WIDTH - 1),
-        self.y + math.ceil((y + 1) / HEIGHT - 1)
-    }
-    
-    if(self.all[x] ~= nil and self.all[x][y] ~= nil) then
-        data.chunk = self.all[x][y]
-        data.tile = data.chunk:get_tile(
-            (x % WIDTH + WIDTH) % WIDTH, 
-            (y % HEIGHT + HEIGHT) % HEIGHT
-        )
+function chunk:get_neighbors(x, y, includeSelf)
+    --[[ directions
+        vec2(1, 0),
+        vec2(-1, 0),
+        vec2(0, 1 ),
+        vec2(0, -1),
+    ]]
+
+    local neighbors = {}
+    if(includeSelf or includeSelf == nil) then
+        neighbors[#neighbors + 1] = self
+    end
+
+    if(x == WIDTH) then 
+        local neighbor = get_chunk_at(self.x + 1, self.y)
+        if(neighbor) then
+            neighbors[#neighbors + 1] = neighbor
+        end
+    elseif(x == 0) then
+        local neighbor = get_chunk_at(self.x - 1, self.y)
+        if(neighbor) then
+            neighbors[#neighbors + 1] = neighbor
+        end
+    end
+
+    if(y == HEIGHT) then 
+        local neighbor = get_chunk_at(self.x, self.y + 1)
+        if(neighbor) then
+            neighbors[#neighbors + 1] = neighbor
+        end
+    elseif(y == 0) then
+        local neighbor = get_chunk_at(self.x, self.y - 1)
+        if(neighbor) then
+            neighbors[#neighbors + 1] = neighbor
+        end
     end
     
-    return data
+    return neighbors
+end
+
+function chunk:update_lightmap()
+end
+
+function chunk:fetch_light(x, y)
+    return 
 end
 
 function chunk:build()
@@ -251,11 +283,11 @@ function chunk:build()
 
         for y = 1, HEIGHT do
             local tile = self:get_tile(x, y)      
-            --[[if(tile ~= nil) then
+            if(tile ~= nil) then
                 add_quad(x, y, 1, 1, tile)
-            end--]]
+            end
             -- greedy meshing      
-            if(tile ~= nil and not tested[x][y]) then
+            --[[if(tile ~= nil and not tested[x][y]) then
                 tested[x][y] = true
                 
                 local start = {
@@ -281,7 +313,7 @@ function chunk:build()
 
                 -- create new quad
                 add_quad(start.x, start.y, size.x, size.y, tile)
-            end
+            end--]]
         end
     end
 

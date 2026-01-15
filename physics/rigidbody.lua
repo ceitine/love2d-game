@@ -390,9 +390,10 @@ function rigidbody:raycast(from, to)
 
         h = math.sqrt(h)
         local t = -b - h
+        local flipNormal = false
         if(t < 0) then
             t = -b + h
-
+            flipNormal = true
             if(t < 0) then
                 return result
             end
@@ -405,6 +406,10 @@ function rigidbody:raycast(from, to)
         result.hit = true
         result.hit_position = from + dir * t
         result.normal = (result.hit_position - center):normalize()
+        if(flipNormal) then
+            result.normal = 0 - result.normal
+        end
+        
         return result
     end
 

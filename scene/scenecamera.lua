@@ -53,7 +53,7 @@ function scenecamera:render()
 
     -- draw fps and crosshair
     render.string(math.floor(1 / time.delta), 10, 10, color.new(60, 200, 60), 0.8)
-    render.string("pos: ".. tostring(CAMERA.position), 10, 10, color.WHITE, 0.8)
+    render.string("pos: ".. tostring(CAMERA.position), 10, 40, color.WHITE, 0.8)
 
     -- raycast debugging
     local endX, endY = love.mouse.getX(), love.mouse.getY()

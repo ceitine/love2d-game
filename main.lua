@@ -8,6 +8,7 @@ stringx = require("util/stringx")
 color = require("render/color")
 render = require("render/render")
 time = require("util/time")
+scenelight = require("scene/scenelight")
 scenecamera = require("scene/scenecamera")
 scene = require("scene/scene")
 
