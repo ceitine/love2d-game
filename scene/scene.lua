@@ -6,10 +6,6 @@ local mt = {
     __index = scene,
 }
 
--- variables
-scene.chunks = nil
-scene.flat_chunks = nil
-
 -- create new scene
 function scene:create(o)
     local instance = o or {}
@@ -20,7 +16,13 @@ function scene:create(o)
     instance.contact_pairs = {}
     instance.accumulator = 0
     instance.body_map = {}
-    instance.lightmap = {}
+
+    instance.lights = {}
+    instance.lights_map = {}
+    
+    instance.light_data = love.image.newImageData(LIGHTMAP_RESOLUTION, LIGHTMAP_RESOLUTION)
+    instance.light_texture = love.graphics.newImage(instance.light_data)
+    instance.light_texture:setFilter("linear", "linear")
 
     setmetatable(instance, mt)
     self.__index = instance
@@ -40,12 +42,70 @@ function scene.new()
         end
     end
 
+    scenelight.circle(vec2(0, 0), 15, color.RED:with_alpha(125))
     instance:refresh_chunks()
 
     return instance
 end
 
 -- instance functions
+function scene:get_chunk_lights(x, y)
+    if(self.lights_map[x] == nil) then return nil end
+    return self.lights_map[x][y]
+end
+
+function scene:add_light_to_chunk(light, x, y)
+    if(not self.lights_map[x]) then 
+        self.lights_map[x] = {} 
+    end
+
+    if(not self.lights_map[x][y]) then
+        self.lights_map[x][y] = {}
+    end
+
+    table.insert(self.lights_map[x][y], light)
+end
+
+function scene:register_light(light)
+    self.lights[light] = true
+    
+    local max_distance = light:get_distance()
+    
+    local chunk_x = math.floor(light.position.x / chunk.WIDTH)
+    local chunk_y = math.floor(light.position.y / chunk.HEIGHT)
+    
+    local radius = math.ceil(max_distance / chunk.WIDTH)
+    
+    light.affected_chunks = {}
+
+    for cx = chunk_x - radius, chunk_x + radius do
+        for cy = chunk_y - radius, chunk_y + radius do
+            self:add_light_to_chunk(light, cx, cy)
+            table.insert(light.affected_chunks, {
+                x = cx, 
+                y = cy
+            })
+        end
+    end
+end
+
+function scene:unregister_light(light)
+    self.lights[light] = nil
+
+    if(not light.affected_chunks) then return end
+
+    for i = 1, #light.affected_chunks do
+        local chunk_pos = light.affected_chunks[i]
+        local lights = self:get_chunk_lights(chunk_pos.x, chunk_pos.y)
+        for j = #lights, 1, -1 do
+            if(lights[j] == light) then
+                table.remove(lights, j)
+                break
+            end
+        end
+    end
+end
+
 function scene:refresh_chunks()
     for _, chunk in pairs(self.flat_chunks) do 
         chunk:update_lightmap()
@@ -178,13 +238,39 @@ function scene:raycast(from, to, capture_path) -- this is in tile space!
     return result
 end
 
-function scene:render(x, y, scale)
-    -- draw chunks
+function scene:render(x, y, scale)    
+    -- draw visible chunks
+    local width = love.graphics.getWidth()
+    local height = love.graphics.getHeight()
+    
+    local cam_x = (x - width * 0.5) / -scale
+    local cam_y = (y - height * 0.5) / -scale
+
+    local cam_min_x = cam_x - width / (2 * scale)
+    local cam_max_x = cam_x + width / (2 * scale)
+    local cam_min_y = cam_y - height / (2 * scale)
+    local cam_max_y = cam_y + height / (2 * scale)
+    
+    local min_x = math.floor(cam_min_x / chunk.WIDTH)
+    local max_x = math.ceil(cam_max_x / chunk.WIDTH)
+    local min_y = math.floor(cam_min_y / chunk.HEIGHT)
+    local max_y = math.ceil(cam_max_y / chunk.HEIGHT)
+    
     render.set_shader(chunk.shader)
-    for _, chunk in pairs(self.flat_chunks) do
-        chunk:render(x, y, scale)
+    for chunk_x = min_x, max_x do
+        for chunk_y = min_y, max_y do
+            local chunk = self.chunks[chunk_x] and self.chunks[chunk_x][chunk_y]
+            if(chunk) then
+                chunk:render(x, y, scale)
+            end
+        end
     end
     render.set_shader()
+
+    love.graphics.push()
+    love.graphics.scale(width / LIGHTMAP_RESOLUTION, height / LIGHTMAP_RESOLUTION)
+    love.graphics.draw(self.light_texture)
+    love.graphics.pop()
 
     --[[for _, chunk in pairs(self.flat_chunks) do
         for _, v in pairs(chunk.quads) do 

@@ -21,6 +21,16 @@ function mathx.lerp(a, b, delta, clamp)
     return a + (b - a) * delta
 end
 
+function mathx.remap(value, min, max, newMin, newMax, clamp)
+    local delta = (value - min) / (max - min); 
+    if(clamp) then
+        delta = mathx.clamp(delta, 0, 1)
+    end
+
+    local remapped = newMin + delta * (newMax - newMin);
+    return remapped
+end
+
 function mathx.random(min, max, seed)
     if(seed ~= nil) then
         love.math.setRandomSeed(tonumber(seed) or time.now)
