@@ -19,7 +19,7 @@ local mt = {
 -- defaults, note: the limit for these is the max value of an 8-bit integer
 local WIDTH, HEIGHT = 32, 32
 TEXTURE_ATLAS = TEXTURE_ATLAS or textureatlas.new("assets/atlas.png", 8)
-
+DEFAULT_LIGHTMAP = DEFAULT_LIGHTMAP or love.graphics.newImage(love.image.newImageData(1, 1))
 chunk.WIDTH = WIDTH
 chunk.HEIGHT = HEIGHT
 
@@ -103,18 +103,16 @@ end
 
 -- functions
 local function set_chunk_at(x, y, chunk, all)
-    -- append new row
     if(all[x] == nil) then
         all[x] = {}
     end
 
-    -- append chunk
     all[x][y] = chunk
 end
 
-local function get_chunk_at(x, y)
-    if(all[x] == nil) then return nil end
-    return all[x][y]
+function chunk:get_chunk_at(x, y)
+    if(self.all[x] == nil) then return nil end
+    return self.all[x][y]
 end
 
 function chunk:create(o)
@@ -148,23 +146,19 @@ function chunk.new(x, y, scene)
 end
 
 function chunk:set_tile(tile, x, y)
-    -- append new row
     if(self.tiles[y] == nil and tile ~= nil) then
         self.tiles[y] = {}
     end
 
-    -- append tile
     self.tiles[y][x] = tile
     self.tile_count = self.tile_count + (tile ~= nil and 1 or -1)
 end
 
 function chunk:get_tile(x, y)
-    -- check if within bounds
     if(self.tiles[y] == nil) then
         return nil
     end
 
-    -- return tile
     return self.tiles[y][x]
 end
 
@@ -182,24 +176,24 @@ function chunk:get_neighbors(x, y, includeSelf)
     end
 
     if(x == WIDTH) then 
-        local neighbor = get_chunk_at(self.x + 1, self.y)
+        local neighbor = self:get_chunk_at(self.x + 1, self.y)
         if(neighbor) then
             neighbors[#neighbors + 1] = neighbor
         end
     elseif(x == 0) then
-        local neighbor = get_chunk_at(self.x - 1, self.y)
+        local neighbor = self:get_chunk_at(self.x - 1, self.y)
         if(neighbor) then
             neighbors[#neighbors + 1] = neighbor
         end
     end
 
     if(y == HEIGHT) then 
-        local neighbor = get_chunk_at(self.x, self.y + 1)
+        local neighbor = self:get_chunk_at(self.x, self.y + 1)
         if(neighbor) then
             neighbors[#neighbors + 1] = neighbor
         end
     elseif(y == 0) then
-        local neighbor = get_chunk_at(self.x, self.y - 1)
+        local neighbor = self:get_chunk_at(self.x, self.y - 1)
         if(neighbor) then
             neighbors[#neighbors + 1] = neighbor
         end
@@ -229,11 +223,11 @@ function chunk:propagate_light_from_source(source_pos, max_distance, light_color
     if(start_x < -max_distance or start_x > WIDTH + max_distance or
        start_y < -max_distance or start_y > HEIGHT + max_distance) then return end
 
-    table.insert(queue, {x = start_x, y = start_y, distance = 0})
+    table.insert(queue, {x = start_x, y = start_y})
     
     while(#queue > 0) do
         local current = table.remove(queue, 1)
-        local cx, cy, distance = current.x, current.y, current.distance
+        local cx, cy = current.x, current.y
         
         local key = cx .. "," .. cy
         if(visited[key]) then
@@ -242,36 +236,52 @@ function chunk:propagate_light_from_source(source_pos, max_distance, light_color
 
         visited[key] = true
         
-        if(distance > max_distance) then
+        local dx = cx - start_x
+        local dy = cy - start_y
+        local euclidean_distance = math.sqrt(dx * dx + dy * dy)
+        if(euclidean_distance > max_distance) then
             goto continue
         end
         
-        local in_chunk = cx >= 1 and cx <= WIDTH and cy >= 1 and cy <= HEIGHT
-        if(in_chunk) then
-            local tile = self:get_tile(cx, cy)
-            if tile ~= nil then
-                -- solid tile blocks light
-                goto continue
-            end
-            
-            local attenuation = 1.0 - (distance / max_distance)
-            local attenuated_color = color.new(
-                math.floor(light_color.r * attenuation),
-                math.floor(light_color.g * attenuation),
-                math.floor(light_color.b * attenuation),
-                math.floor(light_color.a * attenuation)
-            )
-
-            local existing = self.lightmap[cx][cy]
-            self.lightmap[cx][cy] = color.new(
-                math.min(255, existing.r + attenuated_color.r),
-                math.min(255, existing.g + attenuated_color.g),
-                math.min(255, existing.b + attenuated_color.b),
-                math.max(existing.a, attenuated_color.a)
-            )
+        local world_x = self.x * WIDTH + cx
+        local world_y = self.y * HEIGHT + cy
+        
+        local target_chunk_x = math.floor((world_x - 1) / WIDTH)
+        local target_chunk_y = math.floor((world_y - 1) / HEIGHT)
+        local target_chunk = self:get_chunk_at(target_chunk_x, target_chunk_y)
+        if(target_chunk == nil) then
+            goto continue
         end
         
-        if(distance < max_distance) then
+        local local_x = ((world_x - 1) % WIDTH + WIDTH) % WIDTH + 1
+        local local_y = ((world_y - 1) % HEIGHT + HEIGHT) % HEIGHT + 1
+        
+        local tile = target_chunk:get_tile(local_x, local_y)
+        local is_solid = tile ~= nil
+
+        if(target_chunk.lightmap) then
+            if(not target_chunk.lightmap[local_x] or not target_chunk.lightmap[local_x][local_y]) then
+                target_chunk:init_lightmap()
+            end
+
+            local attenuation_strength = light_color.a / 255
+            local attenuation = math.max(attenuation_strength - (euclidean_distance / max_distance), 0)
+            local attenuated = light_color:attenuate(attenuation)
+
+            local existing = target_chunk.lightmap[local_x][local_y]
+            target_chunk.lightmap[local_x][local_y] = color.new(
+                math.min(255, existing.r + attenuated.r),
+                math.min(255, existing.g + attenuated.g),
+                math.min(255, existing.b + attenuated.b),
+                math.max(existing.a, attenuated.a)
+            )
+
+            if(target_chunk ~= self) then
+                target_chunk.lighting_dirty = true
+            end
+        end
+        
+        if(not is_solid and euclidean_distance < max_distance) then
             local neighbors = {
                 {x = cx + 1, y = cy},
                 {x = cx - 1, y = cy},
@@ -284,11 +294,11 @@ function chunk:propagate_light_from_source(source_pos, max_distance, light_color
                 local nkey = nx .. "," .. ny
                 
                 if(not visited[nkey]) then
-                    if(nx > -2 and nx < WIDTH + 2 and ny > -2 and ny < HEIGHT + 2) then
+                    if(nx > -max_distance - 1 and nx < WIDTH + max_distance + 1 and 
+                       ny > -max_distance - 1 and ny < HEIGHT + max_distance + 1) then
                         table.insert(queue, {
                             x = nx,
-                            y = ny,
-                            distance = distance + 1
+                            y = ny
                         })
                     end
                 end
@@ -317,7 +327,40 @@ function chunk:fetch_light(x, y)
     if(not self.lightmap or not self.lightmap[x]) then 
         return color.BLACK
     end
+    
     return self.lightmap[x][y] or color.BLACK
+end
+
+function chunk:build_lightmap_texture()
+    if(not self.lightmap) then
+        if (self.lightmap_texture) then
+            self.lightmap_texture:release()
+            self.lightmap_texture = nil
+        end
+
+        return
+    end
+
+    local imageData = love.image.newImageData(WIDTH, HEIGHT)
+    
+    for x = 1, WIDTH do
+        for y = 1, HEIGHT do
+            local light_color = self:fetch_light(x, y)
+            imageData:setPixel(x - 1, y - 1, 
+                light_color.r / 255,
+                light_color.g / 255,
+                light_color.b / 255,
+                1.0
+            )
+        end
+    end
+
+    if(self.lightmap_texture) then
+        self.lightmap_texture:replacePixels(imageData)
+    else
+        self.lightmap_texture = love.graphics.newImage(imageData)
+        self.lightmap_texture:setFilter("nearest", "nearest")
+    end
 end
 
 function chunk:build()
@@ -371,7 +414,6 @@ function chunk:build()
         -- self.quads[#self.quads + 1] = {x = x, y = y, w = width, h = height}
 
         -- add quad to buffer
-        local light_color = self:fetch_light(x, y)
         local texture_index = start_tile.texture_index
         buffer:add_quad( 
             {x, y, 0, 0, texture_index},
@@ -430,23 +472,38 @@ function chunk:build()
     self.mesh = love.graphics.newMesh(vtx_format, buffer.vertices, "triangles")
     self.mesh:setVertexMap(buffer.indices)
     self.vertex_count = #buffer.vertices
+
+    -- build if lightmap exists and is dirty
+    if(self.lightmap and self.lighting_dirty) then
+        self:build_lightmap_texture()
+        self.lighting_dirty = false
+    end
 end
 
 function chunk:render(x, y, scale)
-    if(self.mesh == nil) then 
-        return
-    end
-
     -- relative positioning
     local scale = scale or SCALE
     local ox = self.x * scale * WIDTH - scale + (x or 0)
     local oy = self.y * scale * HEIGHT - scale + (y or 0)
 
-    -- draw our chunk
-    chunk.shader:send("world_scale", scale)
-    chunk.shader:send("tile_atlas", TEXTURE_ATLAS.image)
+    if(self.mesh ~= nil) then
+        chunk.shader:send("world_scale", scale)
+        chunk.shader:send("tile_atlas", TEXTURE_ATLAS.image)
+        
+        love.graphics.setShader(chunk.shader)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(self.mesh, ox, oy)
+    end
 
-    love.graphics.draw(self.mesh, ox, oy)
+    love.graphics.setShader()
+    love.graphics.setBlendMode("multiply", "premultiplied")
+    love.graphics.setColor(1, 1, 1, 1)
+    if(self.lightmap_texture) then
+        love.graphics.draw(self.lightmap_texture, ox + scale, oy + scale, 0, scale, scale)
+    else
+        love.graphics.draw(DEFAULT_LIGHTMAP, ox + scale, oy + scale, 0, scale * 32, scale * 32)
+    end
+    love.graphics.setBlendMode("alpha")
 end
 
 return chunk

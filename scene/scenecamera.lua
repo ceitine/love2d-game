@@ -45,12 +45,16 @@ function scenecamera:render()
     if(self.scene == nil) then
         return
     end
-    
+  
     -- draw scene
     local x = -self.position.x * self.scale + love.graphics.getWidth() / 2
     local y = -self.position.y * self.scale + love.graphics.getHeight() / 2
     self.scene:render(x, y, self.scale)
-
+  
+    if(LIGHT) then
+        LIGHT:set_position(self.position.x, self.position.y)
+    end
+    
     -- draw fps and crosshair
     render.string(math.floor(1 / time.delta), 10, 10, color.new(60, 200, 60), 0.8)
     render.string("pos: ".. tostring(CAMERA.position), 10, 40, color.WHITE, 0.8)
@@ -86,8 +90,14 @@ function scenecamera:render()
         
         if(love.mouse.isDown(2)) then
             if(raycast.chunk ~= nil) then
+                local local_position = raycast.tile_position - vec2(raycast.chunk.x, raycast.chunk.y)
                 raycast.chunk:set_tile(nil, raycast.tile_position.x, raycast.tile_position.y)
-                raycast.chunk:build()
+
+                for _, chunk in pairs(raycast.chunk:get_neighbors(local_position.x, local_position.y)) do
+                    raycast.chunk:update_lightmap()
+                    raycast.chunk:build()
+                end
+                
             elseif(raycast.body ~= nil) then
                 local impulse = from:direction(to):normalize() * 1000
                 raycast.body:apply_force(impulse.x, impulse.y)

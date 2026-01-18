@@ -17,13 +17,12 @@ function scene:create(o)
     instance.accumulator = 0
     instance.body_map = {}
 
+    instance.dynamic_lights = {}
+    instance.light_texture = love.graphics.newCanvas(LIGHTMAP_RESOLUTION, LIGHTMAP_RESOLUTION)
+    
     instance.lights = {}
     instance.lights_map = {}
     
-    instance.light_data = love.image.newImageData(LIGHTMAP_RESOLUTION, LIGHTMAP_RESOLUTION)
-    instance.light_texture = love.graphics.newImage(instance.light_data)
-    instance.light_texture:setFilter("linear", "linear")
-
     setmetatable(instance, mt)
     self.__index = instance
     return instance
@@ -42,7 +41,8 @@ function scene.new()
         end
     end
 
-    scenelight.circle(vec2(0, 0), 15, color.RED:with_alpha(125))
+    LIGHT = scenelight.circle(vec2(-4, 0), 5, color.BLUE:with_alpha(255), LIGHT_MODE_DYNAMIC)
+    scenelight.circle(vec2(-4, 0), 20, color.RED:with_alpha(255), LIGHT_MODE_STATIC)
     instance:refresh_chunks()
 
     return instance
@@ -67,8 +67,13 @@ function scene:add_light_to_chunk(light, x, y)
 end
 
 function scene:register_light(light)
+    if(light.mode ~= LIGHT_MODE_STATIC) then
+        self.dynamic_lights[light] = true
+        return
+    end
+
     self.lights[light] = true
-    
+
     local max_distance = light:get_distance()
     
     local chunk_x = math.floor(light.position.x / chunk.WIDTH)
@@ -90,6 +95,11 @@ function scene:register_light(light)
 end
 
 function scene:unregister_light(light)
+    if(light.mode ~= LIGHT_MODE_STATIC) then
+        self.dynamic_lights[light] = nil
+        return
+    end
+
     self.lights[light] = nil
 
     if(not light.affected_chunks) then return end
@@ -238,7 +248,22 @@ function scene:raycast(from, to, capture_path) -- this is in tile space!
     return result
 end
 
+function scene:render_dynamic_lights(x, y, scale)
+    self.light_texture:renderTo(function()
+        love.graphics.clear(0, 0, 0, 0)
+        love.graphics.setBlendMode("alpha")
+
+        for light, _ in pairs(self.dynamic_lights) do
+            light:render(x, y, scale)
+        end
+    end)
+end
+
 function scene:render(x, y, scale)    
+    -- self:render_dynamic_lights(x, y, scale)
+
+    love.graphics.clear(1, 1, 1, 1)
+
     -- draw visible chunks
     local width = love.graphics.getWidth()
     local height = love.graphics.getHeight()
@@ -256,7 +281,6 @@ function scene:render(x, y, scale)
     local min_y = math.floor(cam_min_y / chunk.HEIGHT)
     local max_y = math.ceil(cam_max_y / chunk.HEIGHT)
     
-    render.set_shader(chunk.shader)
     for chunk_x = min_x, max_x do
         for chunk_y = min_y, max_y do
             local chunk = self.chunks[chunk_x] and self.chunks[chunk_x][chunk_y]
@@ -265,13 +289,6 @@ function scene:render(x, y, scale)
             end
         end
     end
-    render.set_shader()
-
-    love.graphics.push()
-    love.graphics.scale(width / LIGHTMAP_RESOLUTION, height / LIGHTMAP_RESOLUTION)
-    love.graphics.draw(self.light_texture)
-    love.graphics.pop()
-
     --[[for _, chunk in pairs(self.flat_chunks) do
         for _, v in pairs(chunk.quads) do 
             local col = color.from32(mathx.random(0, 16000000, v.x + v.y + v.w + v.h)):with_alpha(150)

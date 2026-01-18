@@ -93,6 +93,15 @@ function color:lerp(b, t, clamp)
     return self
 end
 
+function color:attenuate(amount)
+    return color.new(
+        math.max(self.r - amount, 0),
+        math.max(self.g - amount, 0),
+        math.max(self.b - amount, 0),
+        math.max(self.a - amount, 0)
+    )
+end
+
 -- some constants
 color.RED = color.new(255, 0, 0, 255)
 color.GREEN = color.new(0, 255, 0, 255)
